@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase'
 
 const level = ref('daily')
 const selectedWeek = ref(null)
-const selectedMonth = ref(null)
+// Removed unused 'selectedMonth'
 const deliveryDate = ref(getCurrentDate())
 
 const { deliveries, fetchDeliveries } = useDeliveries()
@@ -24,8 +24,6 @@ onMounted(() => {
 
 const showForm = ref(false)
 const isEditing = ref(false)
-const editingId = ref(null)
-
 const formData = ref({
   worker_id: '',
   product_id: '',
@@ -33,7 +31,8 @@ const formData = ref({
   delivery_date: getCurrentDate(),
   notes: ''
 })
-
+const editingId = ref(null)
+const showLogButton = ref(true)
 function editDelivery(id, delivery) {
   formData.value = {
     worker_id: delivery.workers.id,
@@ -47,6 +46,7 @@ function editDelivery(id, delivery) {
   showForm.value = true
 }
 
+
 function handleNewEntry() {
   formData.value = {
     worker_id: '',
@@ -56,7 +56,6 @@ function handleNewEntry() {
     notes: ''
   }
   isEditing.value = false
-  editingId.value = null
   showForm.value = true
 }
 
@@ -69,28 +68,14 @@ function resetForm() {
     notes: ''
   }
   isEditing.value = false
-  editingId.value = null
   showForm.value = false
 }
 
 async function handleSubmit(delivery) {
-  if (isEditing.value && editingId.value) {
-    const { error } = await supabase
-      .from('deliveries')
-      .update({ ...delivery, status: 'delivered' })
-      .eq('id', editingId.value)
-    if (!error) {
-      await fetchDeliveries()
-      resetForm()
-    }
-  } else {
-    const { error } = await supabase
-      .from('deliveries')
-      .insert({ ...delivery, status: 'delivered' })
-    if (!error) {
-      await fetchDeliveries()
-      resetForm()
-    }
+  const { error } = await supabase.from('deliveries').insert({ ...delivery, status: 'delivered' })
+  if (!error) {
+    await fetchDeliveries()
+    resetForm()
   }
 }
 
@@ -240,7 +225,6 @@ const groupedDeliveries = computed(() => {
 })
 </script>
 
-
 <template>
   <div class="px-6 pt-6 pb-24 space-y-8 xl:space-y-12">
     <div v-if="isLoading" class="text-white text-center py-10 text-lg italic">
@@ -308,39 +292,41 @@ const groupedDeliveries = computed(() => {
           @delete="deleteDelivery"
         />
       </div>
-    </div>
+    </div> <!-- ✅ Closed the v-else block properly -->
 
-    <!-- Floating Add Button -->
+    <!-- Floating + Log Delivery Button -->
     <button
       @click="handleNewEntry"
-      class="fixed bottom-8 right-8 z-50 bg-green-600 text-white px-5 py-3 rounded-full shadow-lg hover:bg-green-700 transition-all"
+      :class="[
+        'fixed right-6 z-50 bg-green-600 text-white px-5 py-3 rounded-full shadow-lg transition-all duration-300',
+        showLogButton ? 'bottom-20 opacity-100' : 'bottom-[-4rem] opacity-0'
+      ]"
     >
       ➕ Log Delivery
     </button>
 
     <!-- Delivery Modal -->
     <transition
-  enter-active-class="transition duration-300 ease-out"
-  enter-from-class="opacity-0 scale-90"
-  enter-to-class="opacity-100 scale-100"
-  leave-active-class="transition duration-200 ease-in"
-  leave-from-class="opacity-100 scale-100"
-  leave-to-class="opacity-0 scale-90"
->
-  <div
-    v-if="showForm"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-  >
-    <DeliveryForm
-      class="w-full max-w-lg bg-gray-900 text-white p-6 rounded-2xl shadow-2xl overflow-y-auto max-h-[90vh]"
-      :delivery-date="deliveryDate"
-      :edit-mode="isEditing"
-      :form-data="formData"
-      @submit="handleSubmit"
-      @cancel-edit="resetForm"
-    />
-  </div>
-</transition>
-
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="opacity-0 scale-90"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-90"
+    >
+      <div
+        v-if="showForm"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      >
+        <DeliveryForm
+          class="w-full max-w-lg bg-gray-900 text-white p-6 rounded-2xl shadow-2xl overflow-y-auto max-h-[90vh]"
+          :delivery-date="deliveryDate"
+          :edit-mode="isEditing"
+          :form-data="formData"
+          @submit="handleSubmit"
+          @cancel-edit="resetForm"
+        />
+      </div>
+    </transition>
   </div>
 </template>
