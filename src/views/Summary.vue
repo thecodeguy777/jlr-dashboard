@@ -4,7 +4,9 @@ import MetricCard from '../components/MetricCard.vue'
 import DeliveryBarChart from '../components/BarChart.vue'
 import ProductPieChart from '../components/ProductPieChart.vue'
 import DeliveryTable from '../components/DeliveryTable.vue'
+import DeliveryForm from '../components/DeliveryForm.vue'
 import { useDeliveries } from '../composables/useDeliveries'
+import { supabase } from '../lib/supabase'
 
 const level = ref('daily')
 const selectedWeek = ref(null)
@@ -19,6 +21,78 @@ onMounted(() => {
     isLoading.value = false
   }, { immediate: true })
 })
+
+const showForm = ref(false)
+const isEditing = ref(false)
+const editingId = ref(null)
+
+const formData = ref({
+  worker_id: '',
+  product_id: '',
+  quantity: 1,
+  delivery_date: getCurrentDate(),
+  notes: ''
+})
+
+function editDelivery(id, delivery) {
+  formData.value = {
+    worker_id: delivery.workers.id,
+    product_id: delivery.products.id,
+    quantity: delivery.quantity,
+    delivery_date: delivery.delivery_date,
+    notes: delivery.notes || ''
+  }
+  isEditing.value = true
+  editingId.value = id
+  showForm.value = true
+}
+
+function handleNewEntry() {
+  formData.value = {
+    worker_id: '',
+    product_id: '',
+    quantity: 1,
+    delivery_date: getCurrentDate(),
+    notes: ''
+  }
+  isEditing.value = false
+  editingId.value = null
+  showForm.value = true
+}
+
+function resetForm() {
+  formData.value = {
+    worker_id: '',
+    product_id: '',
+    quantity: 1,
+    delivery_date: getCurrentDate(),
+    notes: ''
+  }
+  isEditing.value = false
+  editingId.value = null
+  showForm.value = false
+}
+
+async function handleSubmit(delivery) {
+  if (isEditing.value && editingId.value) {
+    const { error } = await supabase
+      .from('deliveries')
+      .update({ ...delivery, status: 'delivered' })
+      .eq('id', editingId.value)
+    if (!error) {
+      await fetchDeliveries()
+      resetForm()
+    }
+  } else {
+    const { error } = await supabase
+      .from('deliveries')
+      .insert({ ...delivery, status: 'delivered' })
+    if (!error) {
+      await fetchDeliveries()
+      resetForm()
+    }
+  }
+}
 
 function getCurrentDate() {
   const today = new Date()
@@ -166,63 +240,107 @@ const groupedDeliveries = computed(() => {
 })
 </script>
 
+
 <template>
-  <div class="p-6 space-y-6">
+  <div class="px-6 pt-6 pb-24 space-y-8 xl:space-y-12">
     <div v-if="isLoading" class="text-white text-center py-10 text-lg italic">
       Loading deliveries...
     </div>
 
-    <div v-else>
-  <div class="p-6 space-y-6">
-    <!-- Breadcrumb -->
-    <div class="text-sm text-white/70">
-      <span class="cursor-pointer hover:underline" @click="level = 'monthly'">Monthly</span>
-      <span v-if="level !== 'monthly'"> > </span>
-      <span
-        v-if="level === 'weekly' || level === 'daily'"
-        class="cursor-pointer hover:underline"
-        @click="level = 'weekly'"
-      >
-        Week {{ selectedWeek || '–' }}
-      </span>
-      <span v-if="level === 'daily'"> > {{ formattedDate }}</span>
-    </div>
+    <div v-else class="space-y-8 xl:space-y-12">
+      <!-- Breadcrumb -->
+      <div class="text-sm text-white/70">
+        <span class="cursor-pointer hover:underline" @click="level = 'monthly'">Monthly</span>
+        <span v-if="level !== 'monthly'"> > </span>
+        <span
+          v-if="level === 'weekly' || level === 'daily'"
+          class="cursor-pointer hover:underline"
+          @click="level = 'weekly'"
+        >
+          Week {{ selectedWeek || '–' }}
+        </span>
+        <span v-if="level === 'daily'"> > {{ formattedDate }}</span>
+      </div>
 
-    <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-white">
-          {{ reportTitle }}
-        </h1>
-        <div v-if="level === 'weekly' || level === 'monthly'" class="text-sm text-blue-400 cursor-pointer hover:underline" @click="level = 'daily'">
-          ← Back to Daily View
+      <!-- Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold text-white">
+            {{ reportTitle }}
+          </h1>
+          <div
+            v-if="level === 'weekly' || level === 'monthly'"
+            class="text-sm text-blue-400 cursor-pointer hover:underline"
+            @click="level = 'daily'"
+          >
+            ← Back to Daily View
+          </div>
+        </div>
+        <input
+          type="date"
+          v-model="deliveryDate"
+          class="bg-white/10 text-white px-4 py-2 rounded-md border border-white/20"
+        />
+      </div>
+
+      <!-- Metrics Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <MetricCard title="Total Deliveries" :value="totalDeliveries + ' pcs'" />
+        <MetricCard title="Single-Walled Total" :value="singleWalledTotal + ' pcs'" />
+        <MetricCard title="Double-Walled Total" :value="doubleWalledTotal + ' pcs'" />
+      </div>
+
+      <!-- Charts -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 xl:gap-10">
+        <div class="rounded-2xl bg-white/5 p-6 xl:p-8">
+          <DeliveryBarChart :data="barChartData" />
+        </div>
+        <div class="rounded-2xl bg-white/5 p-6 xl:p-8">
+          <ProductPieChart :data="pieChartData" />
         </div>
       </div>
-      <input
-        type="date"
-        v-model="deliveryDate"
-        class="bg-white/10 text-white px-4 py-2 rounded-md border border-white/20"
-      />
-    </div>
 
-    <!-- Metrics Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      <MetricCard title="Total Deliveries" :value="totalDeliveries + ' pcs'" />
-      <MetricCard title="Single-Walled Total" :value="singleWalledTotal + ' pcs'" />
-      <MetricCard title="Double-Walled Total" :value="doubleWalledTotal + ' pcs'" />
-    </div>
-
-    <!-- Charts -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <DeliveryBarChart :data="barChartData" />
-      <ProductPieChart :data="pieChartData" />
-    </div>
-
-    <!-- Delivery Table -->
-    <div class="bg-white/10 rounded-xl p-4">
-      <DeliveryTable :grouped-deliveries="groupedDeliveries" />
-    </div>
-  </div>
+      <!-- Delivery Table -->
+      <div class="bg-white/10 rounded-2xl p-6">
+        <DeliveryTable 
+          :grouped-deliveries="groupedDeliveries" 
+          @edit="editDelivery"
+          @delete="deleteDelivery"
+        />
       </div>
+    </div>
+
+    <!-- Floating Add Button -->
+    <button
+      @click="handleNewEntry"
+      class="fixed bottom-8 right-8 z-50 bg-green-600 text-white px-5 py-3 rounded-full shadow-lg hover:bg-green-700 transition-all"
+    >
+      ➕ Log Delivery
+    </button>
+
+    <!-- Delivery Modal -->
+    <transition
+  enter-active-class="transition duration-300 ease-out"
+  enter-from-class="opacity-0 scale-90"
+  enter-to-class="opacity-100 scale-100"
+  leave-active-class="transition duration-200 ease-in"
+  leave-from-class="opacity-100 scale-100"
+  leave-to-class="opacity-0 scale-90"
+>
+  <div
+    v-if="showForm"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+  >
+    <DeliveryForm
+      class="w-full max-w-lg bg-gray-900 text-white p-6 rounded-2xl shadow-2xl overflow-y-auto max-h-[90vh]"
+      :delivery-date="deliveryDate"
+      :edit-mode="isEditing"
+      :form-data="formData"
+      @submit="handleSubmit"
+      @cancel-edit="resetForm"
+    />
+  </div>
+</transition>
+
   </div>
 </template>

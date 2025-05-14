@@ -51,6 +51,23 @@ const editDelivery = (id, delivery) => {
   })
 }
 
+const handleNewEntry = () => {
+  formData.value = {
+    worker_id: '',
+    product_id: '',
+    quantity: 1,
+    delivery_date: getCurrentDate(),
+    notes: ''
+  }
+  isEditing.value = false
+
+  nextTick(() => {
+    const el = document.querySelector('#delivery-form')
+    if (el) el.scrollIntoView({ behavior: 'smooth' })
+  })
+}
+
+
 const deleteDelivery = async (id) => {
   const { error } = await supabase.from('deliveries').delete().eq('id', id)
   if (!error) await fetchDeliveries()
@@ -122,14 +139,24 @@ onMounted(fetchDeliveries)
 
     <!-- Main Section -->
     <div class="flex flex-col lg:flex-row flex-1 overflow-hidden">
-      <DeliveryForm
-        class="w-full lg:w-1/3 bg-gray-800 p-6 overflow-y-auto"
-        :delivery-date="deliveryDate"
-        :edit-mode="isEditing"
-        :form-data="formData"
-        @submit="handleSubmit"
-        @cancel-edit="resetForm"
-      />
+      <transition
+  enter-active-class="transition duration-300 ease-out"
+  enter-from-class="opacity-0 translate-x-10"
+  enter-to-class="opacity-100 translate-x-0"
+  leave-active-class="transition duration-200 ease-in"
+  leave-from-class="opacity-100 translate-x-0"
+  leave-to-class="opacity-0 translate-x-10"
+><DeliveryForm
+          v-if="isEditing || formData.worker_id || formData.product_id || formData.quantity > 0"
+          class="w-full lg:w-1/3 bg-gray-800 p-6 overflow-y-auto"
+          :delivery-date="deliveryDate"
+          :edit-mode="isEditing"
+          :form-data="formData"
+          @submit="handleSubmit"
+          @cancel-edit="resetForm"
+        /></transition>
+      
+
       <DeliveryTable
         class="flex-1 bg-gray-900 p-6 overflow-hidden"
         :grouped-deliveries="groupedDeliveries"
@@ -138,4 +165,11 @@ onMounted(fetchDeliveries)
       />
     </div>
   </div>
+  <button
+  @click="handleNewEntry"
+  class="fixed bottom-6 right-6 z-50 bg-green-600 text-white px-5 py-3 rounded-full shadow-lg hover:bg-green-700 transition-all"
+>
+  ➕ Log Delivery
+</button>
+
 </template>
