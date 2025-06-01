@@ -1,45 +1,78 @@
 <template>
-  <div class="bg-white/10 backdrop-blur-md border border-white/10 p-4 rounded-xl">
-    <h3 class="text-sm font-semibold text-white/80 mb-2">Product Distribution</h3>
-    <Pie v-if="data?.labels?.length" :data="data" :options="options" />
-    <p v-else class="text-red-400 text-sm">⚠️ No product data to display.</p>
-  </div>
+  <VChart class="h-80 w-full" :option="options" autoresize />
 </template>
 
-<script>
-import { Pie } from 'vue-chartjs';
+<script setup>
+import { computed } from 'vue'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { PieChart } from 'echarts/charts'
 import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-} from 'chart.js';
+  TooltipComponent,
+  LegendComponent,
+  TitleComponent
+} from 'echarts/components'
+import VChart from 'vue-echarts'
 
-ChartJS.register(ArcElement, Tooltip, Legend);
+use([
+  CanvasRenderer,
+  PieChart,
+  TooltipComponent,
+  LegendComponent,
+  TitleComponent
+])
 
-export default {
-  name: 'ProductPieChart',
-  components: { Pie },
-  props: {
-    data: {
-      type: Object,
-      required: true,
-    },
+const props = defineProps({
+  data: {
+    type: Object,
+    required: true
+  }
+})
+
+const options = computed(() => ({
+  title: {
+    text: 'Deliveries by Product',
+    left: 'center',
+    textStyle: { color: 'white', fontSize: 16 }
   },
-  computed: {
-    options() {
-      return {
-        responsive: true,
-        plugins: {
-          legend: {
-            position: 'right',
-            labels: {
-              color: '#ccc',
-            },
-          },
-        },
-      };
-    },
+  tooltip: {
+    trigger: 'item',
+    formatter: '{b}: {c} pcs ({d}%)'
   },
-};
+  legend: {
+    bottom: 10,
+    left: 'center',
+    textStyle: { color: '#ccc' }
+  },
+  series: [
+    {
+      name: 'Products',
+      type: 'pie',
+      radius: '65%',
+      center: ['50%', '50%'],
+      data: props.data.labels.map((label, index) => ({
+        value: props.data.datasets[0].data[index],
+        name: label
+      })),
+      label: {
+        color: '#fff', // sets label text to white
+        fontSize: 12,
+        fontWeight: 'normal',
+        borderWidth: 0, // removes border
+        borderColor: 'transparent' // optional fallback
+      },
+      itemStyle: {
+        borderColor: '#1a1a1a',
+        borderWidth: 0
+      },
+      emphasis: {
+        itemStyle: {
+          shadowBlur: 10,
+          shadowOffsetX: 0,
+          shadowColor: 'rgba(0, 0, 0, 0.5)'
+        }
+      }
+    }
+  ]
+}))
 </script>

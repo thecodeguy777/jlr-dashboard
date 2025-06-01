@@ -14,8 +14,9 @@ export function useDeliveries() {
         quantity,
         delivery_date,
         status,
+        price_snapshot,
         workers (id, name),
-        products (id, name, category, unit)
+        products (id, name, category, unit, price_per_unit)
       `)
       .order('delivery_date', { ascending: false })
 

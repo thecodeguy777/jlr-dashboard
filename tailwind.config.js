@@ -10,6 +10,7 @@ module.exports = {
         'primary': '#8b5cf6',     // Vite-like purple accent
         'secondary': '#6b21a8',   // Dark purple accent
         'card-background': '#1f2937', // Card background color
+        renewco: '#f6f3ed'
       },
     },
   },

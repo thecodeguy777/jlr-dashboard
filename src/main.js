@@ -1,13 +1,43 @@
-import { createApp } from 'vue';
-import App from './App.vue';
-import router from './router'; // Import the router
-import './index.css'; // Adjust the path if needed
-import { createClient } from '@supabase/supabase-js'
+import { createApp } from 'vue'
+import App from './App.vue'
+import router from './router'
+import './index.css'
 
-const supabaseUrl = 'https://zqjkhiqmukojzhnicigs.supabase.co'
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxamtoaXFtdWtvanpobmljaWdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcxMzUzMDAsImV4cCI6MjA2MjcxMTMwMH0.YXfarq17d_9pVZrTkw_S_LlE3JPrpo1CwDXnxmmzjkc'
-export const supabase = createClient(supabaseUrl, supabaseKey)
-const app = createApp(App);
+import { createPinia } from 'pinia'
+import { supabase } from './lib/supabase'
 
-app.use(router); // Use the router
-app.mount('#app');
+const app = createApp(App)
+const pinia = createPinia()
+app.use(pinia)
+app.use(router)
+
+import { useUserStore } from '@/stores/useUserStore'
+
+console.log('[Main] Getting Supabase session...')
+
+// Wait until pinia is applied, then use store
+app.mount('#app')
+
+const userStore = useUserStore()
+
+// 1. Initial session hydration
+supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+    if (error) {
+        console.error('[Main] Error getting session:', error)
+    }
+
+    if (session?.user) {
+        const ok = await userStore.fetchUser()
+        console.log('[Main] fetchUser result:', ok, userStore.user)
+    }
+})
+
+// 2. Listen for auth state changes
+supabase.auth.onAuthStateChange((event, session) => {
+    console.log('[Auth State Change]', event, session)
+    if (session?.user) {
+        userStore.setUser(session.user)
+    } else {
+        userStore.clearUser()
+    }
+})

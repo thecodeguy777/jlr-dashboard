@@ -12,52 +12,101 @@ const emit = defineEmits(['submit', 'cancel-edit'])
 
 const products = ref([])
 const workers = ref([])
+const subcontractors = ref([])
 
 const fetchOptions = async () => {
-  const [{ data: productData }, { data: workerData }] = await Promise.all([
-    supabase.from('products').select('id, name, category, unit').order('name'),
-    supabase.from('workers').select('id, name').order('name')
+  const [{ data: productData }, { data: workerData }, { data: subconData }] = await Promise.all([
+    supabase.from('products').select('id, name, category, unit, price_per_unit').order('name'),
+    supabase.from('workers').select('id, name').order('name'),
+    supabase.from('subcontractors').select('id, name').order('name')
   ])
   products.value = productData || []
   workers.value = workerData || []
+  subcontractors.value = subconData || []
 }
+
+function handleSubmit() {
+  const product = products.value.find(p => p.id === props.formData.product_id)
+  const price_snapshot = product?.price_per_unit || 0
+
+  const payload = {
+    product_id: props.formData.product_id,
+    quantity: props.formData.quantity,
+    price_snapshot,
+    notes: props.formData.notes || '',
+  }
+
+  if (props.formData.source === 'inhouse') {
+    emit('submit', {
+      ...payload,
+      worker_id: props.formData.worker_id,
+      delivery_date: props.formData.delivery_date,
+      source: 'inhouse'
+    })
+  } else {
+    emit('submit', {
+      ...payload,
+      subcon_id: props.formData.subcon_id,
+      pickup_date: props.formData.pickup_date,
+      delivery_date: props.formData.delivery_date,
+      source: 'subcon'
+    })
+  }
+}
+
 
 onMounted(fetchOptions)
 </script>
 
 <template>
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-  >
-    <div
-      id="delivery-form"
-      class="w-full max-w-lg backdrop-blur-md p-6 rounded-2xl shadow-md border transition-all bg-white/10 border-white/10"
-    >
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-md supports-[backdrop-filter]:bg-black/30 transition-opacity duration-300 ease-out"
+    @keydown.esc="$emit('cancel-edit')" @click.self="$emit('cancel-edit')" tabindex="0">
+
+    <div id="delivery-form"
+      class="w-full max-w-lg transform scale-95 transition-transform duration-300 ease-out backdrop-blur-md p-6 rounded-2xl shadow-md border bg-white/10 border-white/10">
       <h2 class="text-2xl font-bold mb-4 border-b border-gray-600 pb-2">
         {{ editMode ? 'Edit Delivery' : 'Log New Delivery' }}
       </h2>
 
-      <form @submit.prevent="emit('submit', props.formData)">
+      <form @submit.prevent="handleSubmit">
         <div class="space-y-4">
-          <!-- Worker -->
-          <div>
+          <!-- Source Type -->
+          <div class="flex space-x-2 text-sm text-white/80">
+            <button type="button" @click="formData.source = 'inhouse'"
+              :class="['px-4 py-2 rounded-l', formData.source === 'inhouse' ? 'bg-blue-600 text-white font-bold' : 'bg-white/10 hover:bg-white/20']">
+              In-House
+            </button>
+            <button type="button" @click="formData.source = 'subcon'"
+              :class="['px-4 py-2 rounded-r', formData.source === 'subcon' ? 'bg-green-600 text-white font-bold' : 'bg-white/10 hover:bg-white/20']">
+              Subcontractor
+            </button>
+          </div>
+
+          <!-- Worker or Subcontractor -->
+          <div v-if="formData.source === 'inhouse'">
             <label class="block text-sm font-medium text-gray-300">Worker</label>
-            <select
-              v-model="props.formData.worker_id"
-              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"
-            >
+            <select v-model="formData.worker_id"
+              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600">
               <option value="" disabled>Select worker</option>
               <option v-for="w in workers" :key="w.id" :value="w.id">{{ w.name }}</option>
+            </select>
+          </div>
+
+          <div v-if="formData.source === 'subcon'">
+            <label class="block text-sm font-medium text-gray-300">Subcontractor</label>
+            <select v-model="formData.subcon_id"
+              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600">
+              <option value="" disabled>Select subcontractor</option>
+              <option v-for="s in subcontractors" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
           </div>
 
           <!-- Product -->
           <div>
             <label class="block text-sm font-medium text-gray-300">Product</label>
-            <select
-              v-model="props.formData.product_id"
-              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"
-            >
+            <select v-model="formData.product_id"
+              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600">
               <option value="" disabled>Select product</option>
               <option v-for="p in products" :key="p.id" :value="p.id">
                 {{ p.name }} ({{ p.unit }})
@@ -68,47 +117,39 @@ onMounted(fetchOptions)
           <!-- Quantity -->
           <div>
             <label class="block text-sm font-medium text-gray-300">Quantity</label>
-            <input
-              type="number"
-              v-model.number="props.formData.quantity"
-              min="1"
-              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"
-            />
+            <input type="number" v-model.number="formData.quantity" min="1"
+              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600" />
           </div>
 
-          <!-- Date -->
-          <div>
-            <label class="block text-sm font-medium text-gray-300">Date</label>
-            <input
-              type="date"
-              v-model="props.formData.delivery_date"
+          <!-- Dates -->
+          <div v-if="formData.source === 'inhouse'">
+            <label class="block text-sm font-medium text-gray-300">Delivery Date</label>
+            <input type="date" v-model="formData.delivery_date"
+              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600" />
+          </div>
+
+          <div v-else>
+
+            <label class="block text-sm font-medium text-gray-300 mt-2">Delivery Date</label>
+            <input type="date" v-model="formData.delivery_date"
               class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"
-            />
+              :max="new Date().toISOString().split('T')[0]" />
           </div>
 
           <!-- Notes -->
           <div>
             <label class="block text-sm font-medium text-gray-300">Notes</label>
-            <textarea
-              v-model="props.formData.notes"
-              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 resize-none"
-              rows="3"
-            ></textarea>
+            <textarea v-model="formData.notes"
+              class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 resize-none" rows="3"></textarea>
           </div>
 
           <!-- Buttons -->
           <div class="flex gap-2">
-            <button
-              type="submit"
-              class="flex-1 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-            >
+            <button type="submit" class="flex-1 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
               {{ editMode ? 'Update Delivery' : 'Log Delivery' }}
             </button>
-            <button
-              type="button"
-              @click="emit('cancel-edit')"
-              class="flex-1 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-            >
+            <button type="button" @click="emit('cancel-edit')"
+              class="flex-1 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
               Cancel
             </button>
           </div>

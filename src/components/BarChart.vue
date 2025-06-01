@@ -1,53 +1,65 @@
 <template>
-  <div class="bg-white/10 backdrop-blur-md border border-white/10 p-4 rounded-xl">
-    <h3 class="text-sm font-semibold text-white/80 mb-2">Deliveries Overview</h3>
-    <Bar v-if="data?.labels?.length" :data="data" :options="options" />
-    <p v-else class="text-red-400 text-sm">⚠️ No data available for chart.</p>
-  </div>
+  <VChart class="h-80 w-full" :option="options" autoresize />
 </template>
 
-<script>
-import { Bar } from 'vue-chartjs'
+<script setup>
+import { computed } from 'vue'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { BarChart } from 'echarts/charts'
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-} from 'chart.js'
+  TitleComponent,
+  TooltipComponent,
+  GridComponent,
+  LegendComponent
+} from 'echarts/components'
+import VChart from 'vue-echarts'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
+use([
+  CanvasRenderer,
+  BarChart,
+  TitleComponent,
+  TooltipComponent,
+  GridComponent,
+  LegendComponent
+])
 
-export default {
-  name: 'BarChart',
-  components: { Bar },
-  props: {
-    data: {
-      type: Object,
-      required: true
-    }
-  },
-  computed: {
-    options() {
-      return {
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          title: { display: false }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { color: '#ccc' }
-          },
-          x: {
-            ticks: { color: '#ccc' }
-          }
-        }
-      }
-    }
+const props = defineProps({
+  data: {
+    type: Object,
+    required: true
   }
-}
+})
+
+const options = computed(() => ({
+  title: {
+    text: 'Deliveries by Worker',
+    left: 'center',
+    textStyle: { color: '#fff', fontSize: 16 }
+  },
+  tooltip: {
+    trigger: 'axis'
+  },
+  xAxis: {
+    type: 'category',
+    data: props.data.labels,
+    axisLabel: { color: '#aaa' },
+    axisLine: { lineStyle: { color: '#555' } }
+  },
+  yAxis: {
+    type: 'value',
+    axisLabel: { color: '#aaa' },
+    splitLine: { lineStyle: { color: '#333' } }
+  },
+  grid: { top: 60, bottom: 40, left: 40, right: 20 },
+  series: [
+    {
+      name: 'Deliveries',
+      type: 'bar',
+      data: props.data.datasets[0].data,
+      itemStyle: { color: '#22c55e' },
+      barWidth: '50%'
+    }
+  ]
+}))
 </script>
