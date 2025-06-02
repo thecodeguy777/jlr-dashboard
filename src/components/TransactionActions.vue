@@ -11,63 +11,97 @@
                     </div>
 
                     <div class="space-y-4">
-                        <input v-model="localForm.category" list="category-options" type="text" placeholder="Category"
-                            class="bg-gray-800 text-white w-full p-3 rounded" />
-                        <datalist id="category-options">
-                            <option v-for="cat in categories" :key="cat" :value="cat" />
-                        </datalist>
 
-                        <input v-model.number="localForm.amount" type="number" placeholder="Amount" :class="[
-                            'bg-gray-800 w-full p-3 rounded text-lg',
-                            localForm.type === 'topup' ? 'text-green-400' : 'text-red-400'
-                        ]" />
+                        <!-- Category Dropdown -->
+                        <div>
+                            <label for="category" class="block text-sm mb-1 text-white/70">Category</label>
+                            <select id="category" v-model="localForm.category"
+                                class="bg-gray-800 text-white w-full p-3 rounded">
+                                <option disabled value="">-- Select a category --</option>
+                                <option v-for="cat in categoryOptions" :key="cat" :value="cat">
+                                    {{ cat }}
+                                </option>
+                            </select>
+                        </div>
 
-                        <select v-model="localForm.type" class="bg-gray-800 text-white w-full p-3 rounded">
-                            <option value="expense">Expense</option>
-                            <option value="topup">Top-up</option>
-                        </select>
 
-                        <textarea v-model="localForm.note" placeholder="Write note"
-                            class="bg-gray-800 text-white w-full p-3 rounded"></textarea>
 
-                        <input type="date" v-model="localForm.date" class="bg-gray-800 text-white w-full p-3 rounded" />
+                        <!-- Amount -->
+                        <div>
+                            <input v-model.number="localForm.amount" type="number" placeholder="Amount" :class="[
+                                'bg-gray-800 w-full p-3 rounded text-lg',
+                                localForm.type === 'topup' ? 'text-green-400' : 'text-red-400'
+                            ]" />
+                        </div>
 
-                        <label class="inline-flex items-center space-x-2">
-                            <input type="checkbox" v-model="localForm.withReceipt" class="accent-green-500" />
-                            <span class="text-sm">With Receipt</span>
-                        </label>
+                        <!-- Type Selection -->
+                        <div>
+                            <select v-model="localForm.type" class="bg-gray-800 text-white w-full p-3 rounded">
+                                <option value="expense">Expense</option>
+                                <option value="topup">Top-up</option>
+                            </select>
+                        </div>
 
-                        <button @click="handleSave"
-                            class="w-full py-3 rounded bg-green-600 hover:bg-green-700 text-white font-semibold">
-                            {{ isEdit ? 'Update' : 'Save' }}
-                        </button>
+                        <!-- Note -->
+                        <div>
+                            <textarea v-model="localForm.note" placeholder="Write note"
+                                class="bg-gray-800 text-white w-full p-3 rounded" rows="3"></textarea>
+                        </div>
 
-                        <button v-if="isEdit" @click="handleDelete"
-                            class="w-full py-3 rounded bg-red-600 hover:bg-red-700 text-white font-semibold">
-                            🗑️ Delete
-                        </button>
+                        <!-- Date Picker -->
+                        <div>
+                            <input type="date" v-model="localForm.date"
+                                class="bg-gray-800 text-white w-full p-3 rounded" />
+                        </div>
+
+                        <!-- With Receipt Toggle -->
+                        <div class="flex items-center space-x-2">
+                            <input type="checkbox" v-model="localForm.withReceipt" class="accent-green-500"
+                                id="receipt-toggle" />
+                            <label for="receipt-toggle" class="text-sm">With Receipt</label>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="space-y-2 pt-2">
+                            <button @click="handleSave"
+                                class="w-full py-3 rounded bg-green-600 hover:bg-green-700 text-white font-semibold">
+                                {{ isEdit ? 'Update' : 'Save' }}
+                            </button>
+
+                            <button v-if="isEdit" @click="handleDelete"
+                                class="w-full py-3 rounded bg-red-600 hover:bg-red-700 text-white font-semibold">
+                                🗑️ Delete
+                            </button>
+                        </div>
+
                     </div>
+
+
                 </div>
             </transition>
         </div>
     </transition>
 </template>
-
 <script setup>
 import { ref, computed, watch } from 'vue'
 
+// Props from parent
 const props = defineProps({
     modelValue: Boolean,
     transaction: Object,
-    categories: Array,
+    expenseCategories: Array,
+    topupCategories: Array,
     onSave: Function,
     onDelete: Function
 })
 
+// Emits
 const emit = defineEmits(['update:modelValue', 'save', 'delete'])
 
-const isEdit = computed(() => !!props.transaction)
+// Is this edit mode?
+const isEdit = computed(() => !!props.transaction?.id)
 
+// Default form structure
 const defaultForm = () => ({
     amount: 0,
     category: '',
@@ -77,8 +111,10 @@ const defaultForm = () => ({
     withReceipt: false
 })
 
+// Reactive local form
 const localForm = ref(defaultForm())
 
+// Watch for incoming transaction prop to preload form
 watch(
     () => props.transaction,
     (newVal) => {
@@ -87,6 +123,14 @@ watch(
     { immediate: true }
 )
 
+// Dynamically return category options based on type
+const categoryOptions = computed(() => {
+    return localForm.value.type === 'topup'
+        ? props.topupCategories
+        : props.expenseCategories
+})
+
+// Convert camelCase to snake_case payload for Supabase
 function toSnakeCasePayload() {
     const { withReceipt, ...rest } = localForm.value
     return {
@@ -95,6 +139,7 @@ function toSnakeCasePayload() {
     }
 }
 
+// Event handlers
 function handleSave() {
     emit('save', toSnakeCasePayload())
     close()

@@ -31,7 +31,7 @@
             <div
                 :class="['flex flex-col items-center justify-center text-xs', { 'text-green-400 font-semibold': isActive }]">
                 <Bell class="w-5 h-5" />
-                <span class="mt-0.5">Alerts</span>
+                <span class="mt-0.5">Transactions</span>
             </div>
         </router-link>
 

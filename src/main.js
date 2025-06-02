@@ -35,9 +35,41 @@ supabase.auth.getSession().then(async ({ data: { session }, error }) => {
 // 2. Listen for auth state changes
 supabase.auth.onAuthStateChange((event, session) => {
     console.log('[Auth State Change]', event, session)
-    if (session?.user) {
-        userStore.setUser(session.user)
-    } else {
+
+    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        setTimeout(async () => {
+            const userStore = useUserStore()
+
+            if (!session?.user?.id) return
+
+            // Attempt to hydrate user + role from user_profiles
+            const { data, error } = await supabase
+                .from('user_profiles')
+                .select('role')
+                .eq('id', session.user.id)
+                .single()
+
+            if (error) {
+                console.warn('[Auth] Could not fetch role from user_profiles:', error.message)
+            }
+
+            // Patch role manually if needed
+            const patchedUser = {
+                ...session.user,
+                user_metadata: {
+                    ...session.user.user_metadata,
+                    role: data?.role || session.user.user_metadata?.role || null
+                }
+            }
+
+            userStore.setUser(patchedUser)
+            console.log('[Auth] User initialized with role:', patchedUser.user_metadata.role)
+        }, 0)
+    }
+
+    if (event === 'SIGNED_OUT') {
         userStore.clearUser()
+        console.log('[Auth] User cleared on sign-out')
     }
 })
+

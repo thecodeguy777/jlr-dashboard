@@ -11,27 +11,52 @@ export const useUserStore = defineStore('user', {
       this.user = user
       this.role = user?.user_metadata?.role || null
     },
-
     async fetchUser() {
-      const { data: { session } } = await supabase.auth.getSession()
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
-      if (session?.user) {
-        this.user = session.user
+        if (sessionError) {
+          console.error('[UserStore] Session fetch error:', sessionError)
+          this.user = null
+          this.role = null
+          return false
+        }
 
-        const { data, error } = await supabase
+        const user = session?.user
+        if (!user) {
+          console.warn('[UserStore] No user in session')
+          this.user = null
+          this.role = null
+          return false
+        }
+
+        this.user = user
+
+        const { data: profile, error: profileError } = await supabase
           .from('user_profiles')
           .select('role')
-          .eq('id', session.user.id)
+          .eq('id', user.id)
           .single()
 
-        this.role = !error && data ? data.role : 'guest'
+        if (profileError) {
+          console.warn('[UserStore] user_profiles fetch error:', profileError.message)
+          this.role = 'guest'
+        } else {
+          this.role = profile?.role || 'guest'
+          console.log('[UserStore] Logged in as:', this.user.email)
+          console.log('[UserStore] Role set to:', this.role)
+
+        }
+
         return true
-      } else {
+      } catch (err) {
+        console.error('[UserStore] Unexpected error in fetchUser:', err)
         this.user = null
         this.role = null
         return false
       }
     },
+
 
     clearUser() {
       console.log('[Auth] clearUser() called')

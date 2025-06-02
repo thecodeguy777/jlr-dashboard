@@ -10,6 +10,7 @@
 
 
         <!-- View Tabs -->
+
         <div class="mb-4 flex space-x-2">
             <button v-for="option in ['Daily', 'Monthly']" :key="option" @click="currentView = option.toLowerCase()"
                 :class="[
@@ -21,6 +22,31 @@
                 {{ option }}
             </button>
         </div>
+        <!-- Daily Date Selector with Controls -->
+        <!-- Enhanced Daily Date Selector -->
+        <div v-if="currentView === 'daily'"
+            class="mb-6 flex items-center justify-center gap-3 bg-gray-900 p-4 rounded-lg shadow-md">
+            <button @click="changeDate(-1)"
+                class="flex items-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition">
+                ⏪ Prev
+            </button>
+
+
+            <button @click="resetToToday"
+                class="flex items-center px-3 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-md transition">
+                📅 Today
+            </button>
+
+            <button @click="changeDate(1)"
+                class="flex items-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition">
+                Next ⏩
+            </button>
+        </div>
+        <!-- Current Date Display -->
+        <div v-if="currentView === 'daily'" class="text-center text-lg font-semibold text-white/80 mb-4">
+            Viewing: {{ formatDate(selectedDate, 'full') }}
+        </div>
+
 
         <!-- Report This Month Title -->
         <div class="mb-2">
@@ -28,7 +54,10 @@
         </div>
 
         <!-- Monthly Report -->
+
+
         <div v-if="currentView === 'monthly'" class="space-y-4">
+
             <div v-for="day in groupedMonthly" :key="day.date" class="bg-white/5 rounded-xl p-4 space-y-3">
                 <div class="flex justify-between items-start">
                     <div class="text-sm text-white/60 leading-tight">
@@ -78,7 +107,7 @@
                         <div class="text-sm font-semibold">{{ entry.category || 'Uncategorized' }}</div>
                         <div class="text-xs text-white/60">{{ entry.note }}</div>
                         <div class="text-xs text-gray-500">
-                            {{ entry.user_profiles?.full_name || entry.user_profiles?.email }}
+                            {{ entry.s?.full_name || entry.s?.email }}
                         </div>
 
                     </div>
@@ -110,14 +139,18 @@
 
         <!-- Modal Trigger -->
         <button @click="openModal()"
-            class="fixed bottom-20 right-6 z-50 w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center shadow-lg">
-            <Plus class="w-6 h-6 text-white" />
+            class="fixed right-6 bottom-20 z-50 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-3 rounded-full shadow-lg transition duration-200 active:scale-95">
+            <Plus class="w-5 h-5 text-white" />
+            <span class="text-sm sm:text-base">Add Transaction</span>
         </button>
+
 
         <!-- Slide-Up Modal -->
         <transition name="modal-fade">
-            <TransactionAction v-model="showModal" :transaction="editingEntry" :categories="categories"
-                @save="saveTransaction" @delete="deleteTransaction" />
+            <TransactionAction v-model="showModal" :transaction="editingEntry" :expenseCategories="expenseCategories"
+                :topupCategories="topupCategories" @save="saveTransaction" @delete="deleteTransaction" />
+
+
 
         </transition>
     </div>
@@ -140,10 +173,16 @@ const editingEntry = ref(null)
 const expenses = ref([])
 const topups = ref([])
 
-const categories = ref([
-    'Fuel', 'Cash Advance', 'Materials', 'Toll Fees', 'Repairs & Maintenance',
-    'Load / Mobile', 'Transportation', 'Utilities', 'Others'
-])
+const expenseCategories = [
+    'Remit Cash', 'Fuel', 'Cash Advance', 'Materials', 'Toll Fees', 'Repairs & Maintenance', 'Load / Mobile', 'Transportation', 'Utilities', 'Others'
+]
+
+const topupCategories = [
+    'Scrap', 'Fund Topup', 'Others'
+]
+
+
+
 
 const closingBalance = computed(() =>
     topups.value.reduce((acc, r) => acc + Number(r.amount || 0), 0) -
@@ -164,63 +203,117 @@ const groupedMonthly = computed(() => {
 const filteredDailyEntries = computed(() =>
     [...expenses.value, ...topups.value].filter(e => e.date === selectedDate.value)
 )
+function resetToToday() {
+    selectedDate.value = new Date().toISOString().split('T')[0]
+}
+
+function changeDate(offset) {
+    const current = new Date(selectedDate.value)
+    current.setDate(current.getDate() + offset)
+    selectedDate.value = current.toISOString().split('T')[0]
+}
 
 function openModal(entry = null) {
-    editingEntry.value = entry
+    editingEntry.value = entry || { type: 'expense' } // fallback to expense if new
     showModal.value = true
 }
 
+
 async function fetchTransactions() {
-    let query = supabase
-        .from('transactions')
-        .select(`
-  *,
-  user_profiles (
-    full_name
-  )
-`)
-        .order('date', { ascending: false });
+    try {
+        const isAdmin = userStore.role === 'admin'
+        const userId = userStore.user?.id
+
+        // Base query with join
+        let query = supabase
+            .from('transactions')
+            .select(`
+    *,
+    user_profiles:user_id (
+      full_name,
+      role
+    )
+  `)
+            .order('date', { ascending: false })
 
 
-    if (userStore.role !== 'admin') {
-        query = query.eq('user_id', userStore.user.id);
+        // Restrict to current user if not admin
+        if (!isAdmin && userId) {
+            query = query.eq('user_id', userId)
+        }
+
+        const { data, error } = await query
+
+        if (error) {
+            console.error('[fetchTransactions] Supabase error:', error)
+            return
+        }
+
+        if (!data || !Array.isArray(data)) {
+            console.warn('[fetchTransactions] No valid data returned')
+            return
+        }
+
+        // Separate by type
+        expenses.value = data.filter(entry => entry.type === 'expense')
+        topups.value = data.filter(entry => entry.type === 'topup')
+
+        console.log('[fetchTransactions] Loaded:', {
+            expenses: expenses.value.length,
+            topups: topups.value.length,
+        })
+    } catch (err) {
+        console.error('[fetchTransactions] Unexpected error:', err)
     }
-
-    const { data, error } = await query;
-
-    if (error) {
-        console.error('Fetch error:', error);
-        return;
-    }
-
-    expenses.value = data.filter(t => t.type === 'expense');
-    topups.value = data.filter(t => t.type === 'topup');
 }
+
+
 
 
 
 async function saveTransaction(entry) {
-    const userId = userStore.user.id
-    const payload = { ...entry, user_id: userStore.user.id }
+    try {
+        const userId = userStore.user?.id
+        if (!userId) {
+            console.error('[saveTransaction] No user ID found.')
+            return
+        }
 
-    console.log('Saving transaction payload:', payload)
+        // Clean payload
+        const payload = {
+            ...entry,
+            user_id: userId,
+        }
+        delete payload.user_profiles
 
-    let result;
-    if (editingEntry.value) {
-        result = await supabase.from('transactions').update(payload).eq('id', editingEntry.value.id)
-    } else {
-        result = await supabase.from('transactions').insert(payload)
+        console.log('[saveTransaction] Payload:', payload)
+
+        let result
+        const isEditMode = editingEntry.value && editingEntry.value.id
+
+        if (isEditMode) {
+            result = await supabase
+                .from('transactions')
+                .update(payload)
+                .eq('id', editingEntry.value.id)
+        } else {
+            result = await supabase
+                .from('transactions')
+                .insert(payload)
+        }
+
+        if (result.error) {
+            console.error('[saveTransaction] Supabase error:', result.error.message)
+            return
+        }
+
+        editingEntry.value = null
+        showModal.value = false
+        await fetchTransactions()
+
+    } catch (err) {
+        console.error('[saveTransaction] Unexpected error:', err)
     }
-
-    const { error } = result
-    if (error) {
-        console.error('Supabase insert error:', error)
-        return
-    }
-
-    editingEntry.value = null
-    showModal.value = false
-    await fetchTransactions()
 }
 
 
@@ -240,9 +333,11 @@ function formatDate(dateStr, part = 'full') {
         weekday: { weekday: 'long' },
         day: { day: '2-digit' },
         monthYear: { month: 'long', year: 'numeric' },
+        full: { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
     }
     return date.toLocaleDateString('en-US', opts[part] || {})
 }
+
 
 function totalForDay(entries) {
     return entries
