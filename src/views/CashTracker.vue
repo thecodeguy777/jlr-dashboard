@@ -104,11 +104,16 @@
                     class="bg-white/5 rounded-xl px-5 py-4 flex justify-between items-center">
                     <!-- Left: Category + Note -->
                     <div>
-                        <div class="text-sm font-semibold">{{ entry.category || 'Uncategorized' }}</div>
-                        <div class="text-xs text-white/60">{{ entry.note }}</div>
-                        <div class="text-xs text-gray-500">
-                            {{ entry.s?.full_name || entry.s?.email }}
+                        <div class="flex items-center gap-2">
+                            <span class="font-medium text-sm">
+                                {{ entry.category || 'Uncategorized' }}
+                            </span>
+                            <span class="px-2 py-0.5 text-xs rounded-full bg-green-700 text-white font-medium">
+                                {{ entry.user_profiles?.full_name || 'Unknown' }}
+                            </span>
                         </div>
+                        <div class="text-xs text-white/50">{{ entry.note }}</div>
+
 
                     </div>
 
