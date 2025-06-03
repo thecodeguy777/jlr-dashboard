@@ -11,7 +11,21 @@
                     </div>
 
                     <div class="space-y-4">
-
+                        <!-- Type Button Tabs -->
+                        <div class="flex space-x-2 mb-4">
+                            <button @click="localForm.type = 'expense'" :class="[
+                                'flex-1 py-2 rounded font-semibold',
+                                localForm.type === 'expense' ? 'bg-red-600 text-white' : 'bg-gray-700 text-white/60'
+                            ]">
+                                Expense
+                            </button>
+                            <button @click="localForm.type = 'topup'" :class="[
+                                'flex-1 py-2 rounded font-semibold',
+                                localForm.type === 'topup' ? 'bg-green-600 text-white' : 'bg-gray-700 text-white/60'
+                            ]">
+                                Top-up
+                            </button>
+                        </div>
                         <!-- Category Dropdown -->
                         <div>
                             <label for="category" class="block text-sm mb-1 text-white/70">Category</label>
@@ -35,12 +49,8 @@
                         </div>
 
                         <!-- Type Selection -->
-                        <div>
-                            <select v-model="localForm.type" class="bg-gray-800 text-white w-full p-3 rounded">
-                                <option value="expense">Expense</option>
-                                <option value="topup">Top-up</option>
-                            </select>
-                        </div>
+
+
 
                         <!-- Note -->
                         <div>

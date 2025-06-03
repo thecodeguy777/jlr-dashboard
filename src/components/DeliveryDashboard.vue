@@ -6,6 +6,7 @@ import { useDeliveries } from '../composables/useDeliveries'
 import DeliveryForm from './DeliveryForm.vue'
 import DeliveryCard from './DeliveryCard.vue'
 import SummaryCard from './SummaryCard.vue'
+import { Plus, } from 'lucide-vue-next'
 
 // Routing
 const router = useRouter()
@@ -330,8 +331,9 @@ async function handleDelete(id) {
 
     <!-- Floating Action Button -->
     <button @click="handleNewEntry"
-      class="fixed right-6 bottom-20 z-50 bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-3 rounded-full shadow-lg transition">
-      ➕ Log Delivery
+      class="fixed right-6 bottom-20 z-50 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-3 rounded-full shadow-lg transition duration-200 active:scale-95">
+      <Plus class="w-5 h-5 text-white" />
+      <span class="text-sm sm:text-base">Add Delivery</span>
     </button>
   </div>
 </template>
