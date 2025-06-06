@@ -34,24 +34,62 @@ const formData = ref(initFormData())
 const { deliveries } = useDeliveries()
 
 // Computed Deliveries
-const filteredDeliveries = computed(() =>
-  deliveries.value.filter(d => deliveryTypeFilter.value === 'all' || d.type === deliveryTypeFilter.value)
-)
+const filteredDeliveries = computed(() => {
+  const filtered = deliveries.value.filter(d => deliveryTypeFilter.value === 'all' || d.type === deliveryTypeFilter.value)
 
-const totalSingleWalledDelivered = computed(() =>
-  filteredDeliveries.value.filter(d => d.products?.category === 'Single Walled')
-    .reduce((sum, d) => sum + (d.quantity || 0), 0)
-)
+  // Debug logging
+  console.log('🔍 Filtered Deliveries Debug:', {
+    totalDeliveries: deliveries.value.length,
+    filteredCount: filtered.length,
+    filter: deliveryTypeFilter.value,
+    sampleDelivery: filtered[0] ? {
+      products: filtered[0].products,
+      category: filtered[0].products?.category,
+      quantity: filtered[0].quantity
+    } : null
+  })
 
-const totalDoubleWalledDelivered = computed(() =>
-  filteredDeliveries.value.filter(d => d.products?.category === 'Double Walled')
-    .reduce((sum, d) => sum + (d.quantity || 0), 0)
-)
+  return filtered
+})
 
-const totalDeliveries = computed(() =>
-  filteredDeliveries.value.filter(d => ['Single Walled', 'Double Walled'].includes(d.products?.category))
-    .reduce((sum, d) => sum + (d.quantity || 0), 0)
-)
+const totalSingleWalledDelivered = computed(() => {
+  const singleWalled = filteredDeliveries.value.filter(d => d.products?.category === 'Single Walled')
+  const total = singleWalled.reduce((sum, d) => sum + (d.quantity || 0), 0)
+
+  console.log('📊 Single Walled Debug:', {
+    count: singleWalled.length,
+    total,
+    items: singleWalled.map(d => ({ name: d.products?.name, category: d.products?.category, quantity: d.quantity }))
+  })
+
+  return total
+})
+
+const totalDoubleWalledDelivered = computed(() => {
+  const doubleWalled = filteredDeliveries.value.filter(d => d.products?.category === 'Double Walled')
+  const total = doubleWalled.reduce((sum, d) => sum + (d.quantity || 0), 0)
+
+  console.log('📊 Double Walled Debug:', {
+    count: doubleWalled.length,
+    total,
+    items: doubleWalled.map(d => ({ name: d.products?.name, category: d.products?.category, quantity: d.quantity }))
+  })
+
+  return total
+})
+
+const totalDeliveries = computed(() => {
+  const validDeliveries = filteredDeliveries.value.filter(d => ['Single Walled', 'Double Walled'].includes(d.products?.category))
+  const total = validDeliveries.reduce((sum, d) => sum + (d.quantity || 0), 0)
+
+  console.log('📊 Total Deliveries Debug:', {
+    count: validDeliveries.length,
+    total,
+    allCategories: [...new Set(filteredDeliveries.value.map(d => d.products?.category).filter(Boolean))]
+  })
+
+  return total
+})
 
 const dailyCategoryTotals = computed(() => {
   const map = {}
@@ -177,15 +215,33 @@ async function refreshWeek() {
 }
 
 async function fetchDeliveriesForWeek(start, end) {
+  console.log('🔄 Fetching deliveries for week:', { start, end })
+
   const [inhouseResult, subconResult] = await Promise.all([
     supabase.from('deliveries').select('*, workers(*), products(*)').gte('delivery_date', start).lte('delivery_date', end),
     supabase.from('subcon_deliveries').select('*, subcontractors(*), products(*)').gte('delivery_date', start).lte('delivery_date', end)
   ])
 
+  console.log('📦 Raw fetch results:', {
+    inhouseCount: inhouseResult.data?.length || 0,
+    subconCount: subconResult.data?.length || 0,
+    inhouseError: inhouseResult.error,
+    subconError: subconResult.error,
+    sampleInhouse: inhouseResult.data?.[0],
+    sampleSubcon: subconResult.data?.[0]
+  })
+
   deliveries.value = [
     ...(inhouseResult.data || []).map(d => ({ ...d, type: 'inhouse', name: d.workers?.name || 'Unknown' })),
     ...(subconResult.data || []).map(d => ({ ...d, type: 'subcon', name: d.subcontractors?.name || 'Unknown' }))
   ]
+
+  console.log('✅ Final deliveries array:', {
+    total: deliveries.value.length,
+    withProducts: deliveries.value.filter(d => d.products).length,
+    withCategory: deliveries.value.filter(d => d.products?.category).length,
+    categories: [...new Set(deliveries.value.map(d => d.products?.category).filter(Boolean))]
+  })
 }
 
 async function fetchSummaryForWeek(start, end) {
@@ -264,7 +320,7 @@ async function handleDelete(id) {
 
 
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-900 text-white font-sans">
+  <div class="flex flex-col min-h-screen text-white font-sans">
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 p-6">

@@ -15,14 +15,61 @@ const workers = ref([])
 const subcontractors = ref([])
 
 const fetchOptions = async () => {
-  const [{ data: productData }, { data: workerData }, { data: subconData }] = await Promise.all([
-    supabase.from('products').select('id, name, category, unit, price_per_unit').order('name'),
-    supabase.from('workers').select('id, name').order('name'),
-    supabase.from('subcontractors').select('id, name').order('name')
-  ])
-  products.value = productData || []
-  workers.value = workerData || []
-  subcontractors.value = subconData || []
+  const MAX_RETRIES = 2
+  const RETRY_DELAY = 1000 // 1 second
+
+  const fetchWithRetry = async (query, retries = 0) => {
+    try {
+      const { data, error } = await query
+      if (error) throw error
+      return data
+    } catch (err) {
+      if (retries < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY))
+        return fetchWithRetry(query, retries + 1)
+      }
+      throw err
+    }
+  }
+
+  try {
+    const [productRes, workerRes, subconRes] = await Promise.allSettled([
+      fetchWithRetry(supabase.from('products').select('id, name, category, unit, price_per_unit').order('name')),
+      fetchWithRetry(supabase.from('workers').select('id, name').order('name')),
+      fetchWithRetry(supabase.from('subcontractors').select('id, name').order('name'))
+    ])
+
+    const errors = []
+
+    if (productRes.status === 'fulfilled') {
+      products.value = productRes.value || []
+    } else {
+      errors.push('Failed to load products')
+      console.error('Products failed:', productRes.reason)
+    }
+
+    if (workerRes.status === 'fulfilled') {
+      workers.value = workerRes.value || []
+    } else {
+      errors.push('Failed to load workers')
+      console.error('Workers failed:', workerRes.reason)
+    }
+
+    if (subconRes.status === 'fulfilled') {
+      subcontractors.value = subconRes.value || []
+    } else {
+      errors.push('Failed to load subcontractors')
+      console.error('Subcontractors failed:', subconRes.reason)
+    }
+
+    if (errors.length > 0) {
+      // You can use your preferred notification system here
+      alert(`Some data failed to load: ${errors.join(', ')}. Please try refreshing the page.`)
+    }
+  } catch (error) {
+    console.error('Fatal error in fetchOptions:', error)
+    alert('Failed to load form data. Please try refreshing the page.')
+  }
 }
 
 function handleSubmit() {
@@ -64,7 +111,7 @@ onMounted(fetchOptions)
     @keydown.esc="$emit('cancel-edit')" @click.self="$emit('cancel-edit')" tabindex="0">
 
     <div id="delivery-form"
-      class="w-full max-w-lg transform scale-95 transition-transform duration-300 ease-out backdrop-blur-md p-6 rounded-2xl shadow-md border bg-white/10 border-white/10">
+      class="w-full max-w-lg transition-transform duration-300 ease-out backdrop-blur-md p-6 rounded-2xl shadow-md border bg-gray-900/80 border-white/10">
       <h2 class="text-2xl font-bold mb-4 border-b border-gray-600 pb-2">
         {{ editMode ? 'Edit Delivery' : 'Log New Delivery' }}
       </h2>
@@ -162,5 +209,22 @@ onMounted(fetchOptions)
 <style scoped>
 label {
   color: #e0e0e0;
+}
+
+.modal-fade-slide-enter-active,
+.modal-fade-slide-leave-active {
+  transition: opacity 0.25s cubic-bezier(.4, 0, .2, 1), transform 0.25s cubic-bezier(.4, 0, .2, 1);
+}
+
+.modal-fade-slide-enter-from,
+.modal-fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(40px) scale(0.96);
+}
+
+.modal-fade-slide-enter-to,
+.modal-fade-slide-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 </style>

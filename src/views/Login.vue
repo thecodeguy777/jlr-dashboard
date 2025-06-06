@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex flex-col items-center justify-center bg-renewco text-gray-900 px-4">
+  <div class="min-h-screen flex flex-col items-center justify-center text-gray-900 px-4">
     <!-- Logo -->
     <img src="/assets/renew-logo.png" alt="RenewCo Logo" class="w-24 h-24 mb-4" />
 

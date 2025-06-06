@@ -35,10 +35,10 @@
             </div>
         </router-link>
 
-        <!-- Log Out (Everyone) -->
-        <button @click="$emit('logout')" class="flex flex-col items-center justify-center text-xs">
+        <!-- Account (Everyone) -->
+        <button @click="userStore.openAccountModal" class="flex flex-col items-center justify-center text-xs">
             <User class="w-5 h-5" />
-            <span class="mt-0.5">Log Out</span>
+            <span class="mt-0.5">Account</span>
         </button>
     </nav>
 </template>

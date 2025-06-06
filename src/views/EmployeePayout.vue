@@ -1,9 +1,14 @@
 <template>
-  <div class="min-h-screen bg-gray-900 text-white p-6 space-y-6">
+  <div class="min-h-screen text-white p-6 space-y-6">
     <!-- Header -->
     <div class="flex justify-between items-center">
       <h1 class="text-xl font-bold">🧾 Payroll Breakdown</h1>
-      <span class="text-sm text-white/60" v-if="!isSelf">Viewing: {{ employeeName }}</span>
+      <div class="text-right">
+        <span class="text-sm text-white/60" v-if="!isSelf">Viewing: {{ employeeName }}</span>
+        <div class="text-xs text-white/40" v-if="weekParam">
+          📅 Week: {{ weekParam }}
+        </div>
+      </div>
     </div>
     <p class="text-sm text-green-400 font-medium">
       💰 Current Savings: ₱{{ currentSavings || '0.00' }}
@@ -23,7 +28,14 @@
     </div>
 
     <div v-if="loading" class="text-white/60 text-sm italic">Loading payroll data...</div>
-    <div v-else-if="!payout" class="text-red-400">No payout found for this employee.</div>
+    <div v-else-if="!payout" class="bg-red-900/20 border border-red-500/30 rounded-xl p-4">
+      <div class="text-red-400 font-medium">No payout found for this employee.</div>
+      <div class="text-sm text-red-300/70 mt-2">
+        <div v-if="weekParam">No payout record found confirmed on {{ weekParam }}</div>
+        <div v-else>No recent confirmed payout found for today</div>
+        <div class="mt-2 text-xs">Check if payouts have been generated and confirmed for this date.</div>
+      </div>
+    </div>
 
     <div v-else class="space-y-6">
       <!-- Weekly Summary -->
@@ -133,6 +145,9 @@ const employeeId = route.params.id || userStore.user?.id || 'mock-id'
 const isAdmin = userStore.role === 'admin'
 const isSelf = !route.params.id
 
+// Get week from query parameter if provided
+const weekParam = route.query.week
+
 const employeeName = ref('Loading...')
 const payout = ref(null)
 const currentSavings = ref(null)
@@ -143,7 +158,16 @@ const loading = ref(true)
 
 onMounted(async () => {
   loading.value = true
-  const today = format(new Date(), 'yyyy-MM-dd')
+
+  // Use the week parameter if provided, otherwise use today
+  const targetDate = weekParam ? weekParam : format(new Date(), 'yyyy-MM-dd')
+
+  console.log('🔍 EmployeePayout Debug:', {
+    employeeId,
+    weekParam,
+    targetDate,
+    routeQuery: route.query
+  })
 
   try {
     // Fetch worker name
@@ -155,16 +179,50 @@ onMounted(async () => {
 
     employeeName.value = worker?.name || 'Unknown Worker'
 
-    // Fetch most recent confirmed payout for today
-    const { data: payoutData } = await supabase
-      .from('payouts')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .gte('confirmed_at', `${today}T00:00:00`)
-      .lte('confirmed_at', `${today}T23:59:59`)
-      .order('confirmed_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // Fetch payout for the specific week
+    let payoutData = null
+
+    if (weekParam) {
+      // If week parameter is provided, fetch payout confirmed on that date
+      console.log('🔍 Searching for payout confirmed on:', { employeeId, weekParam })
+
+      const { data, error } = await supabase
+        .from('payouts')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .gte('confirmed_at', `${weekParam}T00:00:00`)
+        .lte('confirmed_at', `${weekParam}T23:59:59`)
+        .order('confirmed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      console.log('📋 Payout query result:', { data, error })
+
+      // Also check what payouts exist for this employee around this date
+      const { data: allPayouts } = await supabase
+        .from('payouts')
+        .select('week_start, confirmed_at, net_total, status')
+        .eq('employee_id', employeeId)
+        .order('confirmed_at', { ascending: false })
+        .limit(10)
+
+      console.log('📅 All recent payouts for this employee:', allPayouts)
+
+      payoutData = data
+    } else {
+      // Otherwise, fetch most recent confirmed payout for today (original behavior)
+      const { data } = await supabase
+        .from('payouts')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .gte('confirmed_at', `${targetDate}T00:00:00`)
+        .lte('confirmed_at', `${targetDate}T23:59:59`)
+        .order('confirmed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      payoutData = data
+    }
 
     // Fetch current savings total for this employee
     const { data: savingsTotal } = await supabase
@@ -175,16 +233,27 @@ onMounted(async () => {
     const total = savingsTotal?.reduce((sum, row) => sum + (parseFloat(row.amount) || 0), 0) || 0
     currentSavings.value = total.toFixed(2)
 
-
     payout.value = payoutData
+
+    console.log('💰 Payout Data Found:', {
+      payoutData,
+      weekStart: payoutData?.week_start,
+      netTotal: payoutData?.net_total
+    })
+
     if (!payoutData?.week_start) return
 
-    // Fetch and summarize deliveries
+    // Fetch and summarize deliveries for the specific week
+    const deliveryWeekStart = new Date(payoutData.week_start)
+    const deliveryWeekEnd = new Date(deliveryWeekStart)
+    deliveryWeekEnd.setDate(deliveryWeekEnd.getDate() + 6) // Add 6 days to get the full week
+
     const { data: deliveries } = await supabase
       .from('deliveries')
       .select('product_id, quantity, price_snapshot, products(name, price_per_unit)')
       .eq('worker_id', employeeId)
       .gte('delivery_date', payoutData.week_start)
+      .lte('delivery_date', deliveryWeekEnd.toISOString().split('T')[0]) // Get deliveries for the entire week
 
     if (deliveries?.length) {
       const summary = {}

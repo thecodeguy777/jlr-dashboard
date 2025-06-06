@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-900 text-white p-6 space-y-6">
+  <div class="min-h-screen text-white p-6 space-y-6">
     <div class="flex flex-col md:flex-row md:justify-between md:items-center space-y-4 md:space-y-0">
       <h1 class="text-xl font-bold">📤 Generate Weekly Payouts</h1>
       <div class="flex flex-wrap gap-2">

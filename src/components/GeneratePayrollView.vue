@@ -1,5 +1,5 @@
 <template>
-    <div class="min-h-screen bg-gray-900 text-white p-6 space-y-6">
+    <div class="min-h-screen text-white p-6 space-y-6">
         <div class="flex flex-col md:flex-row md:justify-between md:items-center space-y-4 md:space-y-0">
             <h1 class="text-xl font-bold">📤 Generate Weekly Payouts</h1>
             <div class="flex flex-wrap gap-2">
@@ -22,57 +22,84 @@
 
         <div v-if="previewMode && previews.length" class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             <div v-for="p in previews" :key="p.employee_id" @click="loadPayout(p)"
-                class="bg-white/10 p-4 rounded-2xl shadow space-y-1 cursor-pointer hover:bg-white/5 transition w-full h-full flex flex-col justify-between">
-                <div class="flex justify-between">
-                    <h2 class="text-lg font-semibold">{{ p.name }}</h2>
-                    <span class="text-green-400 font-bold text-lg">₱{{ computeNet(p) }}</span>
+                class="bg-white/10 p-5 rounded-2xl shadow space-y-3 cursor-pointer hover:bg-white/5 transition w-full h-full flex flex-col justify-between border border-white/10 hover:border-green-400">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-bold tracking-wide">{{ p.name }}</h2>
+                    <span class="text-green-400 font-bold text-xl">₱{{ computeNet(p) }}</span>
                 </div>
-                <p class="text-sm text-white/60">Gross: ₱{{ Math.round(p.gross_income) }} | Hours: {{ p.hours_worked }}
-                    hrs</p>
-                <p class="text-xs text-white/40">Week: {{ p.week_start }}</p>
+                <div class="text-sm text-white/70 mb-1">Gross: ₱{{ Math.round(p.gross_income) }} | Hours: {{
+                    p.hours_worked }} hrs</div>
+                <div class="text-xs text-white/40 mb-2">Week: {{ p.week_start }}</div>
 
-                <div class="text-xs text-white/50 mt-2 space-y-2">
-                    <div v-for="(products, category) in p.productBreakdownByCategory" :key="category">
-                        <strong class="text-white/70">📦 {{ category }}:</strong>
-                        <ul class="ml-4 list-disc list-inside">
-                            <li v-for="(qty, name) in products" :key="name">
-                                {{ name }}: {{ qty }} pcs
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-                <!-- Add inside card -->
-                <div class="text-xs text-white/50 mt-2 space-y-2">
-                    <div v-for="(products, category) in p.previousBodegaByCategory" :key="'prev-' + category">
-                        <strong class="text-white/70">📦 Previous – {{ category }}:</strong>
-                        <ul class="ml-4 list-disc list-inside">
-                            <li v-for="(qty, name) in products" :key="name">{{ name }}: {{ qty }} pcs</li>
-                        </ul>
-                    </div>
-                    <div v-for="(products, category) in p.currentBodegaByCategory" :key="'curr-' + category">
-                        <strong class="text-white/70">📦 Current – {{ category }}:</strong>
-                        <ul class="ml-4 list-disc list-inside">
-                            <li v-for="(qty, name) in products" :key="name">{{ name }}: {{ qty }} pcs</li>
-                        </ul>
-                    </div>
+                <!-- Product Breakdown -->
+                <div class="space-y-2">
+                    <template v-for="([category, products]) in sortedCategories(p.productBreakdownByCategory)"
+                        :key="category">
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <strong class="flex items-center gap-1 text-white/80 text-xs mb-1">{{
+                                category }}</strong>
+                            <ul class="ml-4 list-disc list-inside">
+                                <li v-for="([name, qty]) in sortedProducts(products)" :key="name"
+                                    class="text-xs text-white/90">
+                                    <span class="font-medium">{{ name }}</span>: <span
+                                        :class="qty > 0 ? 'text-green-300' : 'text-red-300'">{{ qty }}</span> pcs
+                                </li>
+                            </ul>
+                        </div>
+                    </template>
                 </div>
 
+                <!-- Previous Bodega Stock -->
+                <div class="space-y-2 mt-2">
+                    <template v-for="([category, products]) in sortedCategories(p.previousBodegaByCategory)"
+                        :key="'prev-' + category">
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <strong class="flex items-center gap-1 text-white/80 text-xs mb-1">Previous –
+                                {{ category }}</strong>
+                            <ul class="ml-4 list-disc list-inside">
+                                <li v-for="([name, qty]) in sortedProducts(products)" :key="name"
+                                    class="text-xs text-white/90">
+                                    <span class="font-medium">{{ name }}</span>: <span class="text-red-300">{{ qty
+                                        }}</span> pcs
+                                </li>
+                            </ul>
+                        </div>
+                    </template>
+                </div>
 
+                <!-- Current Bodega Stock -->
+                <div class="space-y-2 mt-2">
+                    <template v-for="([category, products]) in sortedCategories(p.currentBodegaByCategory)"
+                        :key="'curr-' + category">
+                        <div class="bg-white/5 rounded-lg p-2">
+                            <strong class="flex items-center gap-1 text-white/80 text-xs mb-1">Current –
+                                {{ category }}</strong>
+                            <ul class="ml-4 list-disc list-inside">
+                                <li v-for="([name, qty]) in sortedProducts(products)" :key="name"
+                                    class="text-xs text-white/90">
+                                    <span class="font-medium">{{ name }}</span>: <span class="text-green-300">{{ qty
+                                        }}</span> pcs
+                                </li>
+                            </ul>
+                        </div>
+                    </template>
+                </div>
 
-                <p class="text-xs" :class="p.exists ? 'text-yellow-400' : 'text-green-500'">
-                    {{ p.exists ? '⚠️ Already exists. Skipping on commit.' : '✅ Ready to commit.' }}
-                </p>
-                <button v-if="!p.exists" @click.stop="commitSinglePayout(p)"
-                    class="mt-2 text-xs bg-green-700 hover:bg-green-800 px-3 py-1 rounded w-fit self-end text-white">
-                    Commit
-                </button>
-
+                <div class="border-t border-white/10 mt-3 pt-2 flex items-center justify-between">
+                    <p class="text-xs" :class="p.exists ? 'text-yellow-400' : 'text-green-500'">
+                        {{ p.exists ? '⚠️ Already exists. Skipping on commit.' : '✅ Ready to commit.' }}
+                    </p>
+                    <button v-if="!p.exists" @click.stop="commitSinglePayout(p)"
+                        class="text-xs bg-green-700 hover:bg-green-800 px-3 py-1 rounded w-fit self-end text-white">
+                        Commit
+                    </button>
+                </div>
             </div>
         </div>
 
         <!-- Editable Modal -->
         <div v-if="selected" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
-            <div class="bg-gray-800 p-6 rounded-2xl shadow-lg w-full max-w-lg space-y-4">
+            <div class="bg-gray-800/90 p-6 rounded-2xl shadow-lg w-full max-w-lg space-y-4">
                 <h2 class="text-lg font-semibold text-white">✏️ Edit Payout for {{ selected.name }}</h2>
 
                 <div class="grid grid-cols-2 gap-4 text-sm">
@@ -243,6 +270,9 @@ async function saveChanges() {
             allowances: p.allowances,
             commissions: p.commissions,
             net_total: computeNet(p),
+            product_breakdown: p.productBreakdownByCategory,
+            previous_bodega: p.previousBodegaByCategory,
+            current_bodega: p.currentBodegaByCategory
         })
         .eq('employee_id', p.employee_id)
         .eq('week_start', p.week_start);
@@ -274,23 +304,31 @@ async function saveChanges() {
     selected.value = null;
 }
 
+function getWeekWindow(selectedDate) {
+    const d = new Date(selectedDate)
+    // Move to Saturday of that week
+    d.setDate(d.getDate() + (6 - d.getDay()))
+    d.setHours(0, 0, 0, 0)
+    const saturday = new Date(d)
+    const sunday = new Date(saturday)
+    sunday.setDate(saturday.getDate() - 6)
+    return {
+        weekStart: sunday,
+        weekEnd: saturday
+    }
+}
+
 async function previewPayouts() {
-    const saturday = new Date(selectedSaturday.value)
-    saturday.setHours(0, 0, 0, 0)
-
-    const weekStart = new Date(saturday)
-    weekStart.setDate(saturday.getDate() - 6)
-
+    // Use strict Sunday-to-Saturday window
+    const { weekStart, weekEnd } = getWeekWindow(selectedSaturday.value)
     const weekStartStr = weekStart.toISOString().split('T')[0];
-    const weekEndStr = saturday.toISOString().split('T')[0];
+    const weekEndStr = weekEnd.toISOString().split('T')[0];
 
     loading.value = true
     previews.value = []
     previewMode.value = true
 
-    saturday.setHours(0, 0, 0, 0);
-
-
+    // Use weekEnd for bodega stock logic as before
     const { data: prevStocks } = await supabase
         .from('bodega_stock')
         .select('week_start')
@@ -299,8 +337,6 @@ async function previewPayouts() {
         .limit(1)
 
     const prevStockStr = prevStocks?.[0]?.week_start || weekStartStr
-
-
 
     const { data: workers } = await supabase.from('workers').select('*')
     const { data: products } = await supabase.from('products').select('id, name, price_per_unit, category')
@@ -313,8 +349,6 @@ async function previewPayouts() {
         .from('bodega_stock')
         .select('*')
         .eq('week_start', prevStockStr)
-
-    console.log('📦 Previous stock on', prevStockStr, previousStock)
 
     previousStock?.forEach(item => {
         const key = `${item.worker_id}_${item.product_id}`
@@ -358,11 +392,6 @@ async function previewPayouts() {
             .from('bodega_stock')
             .select('*')
             .eq('week_start', actualCurrStockStr)
-
-        console.log('📦 Current stock used on', actualCurrStockStr, currentStock)
-
-
-        console.log('📦 Current stock on', weekEndStr, currentStock)
 
         const currMap = {}
         currentStock?.forEach(item => {
@@ -497,7 +526,10 @@ async function commitSinglePayout(p) {
         commissions: p.commissions,
         net_total: computeNet(p),
         status: 'pending',
-        confirmed_at: new Date().toISOString()
+        confirmed_at: new Date().toISOString(),
+        product_breakdown: p.productBreakdownByCategory,
+        previous_bodega: p.previousBodegaByCategory,
+        current_bodega: p.currentBodegaByCategory
     })
 
 
@@ -531,7 +563,10 @@ async function commitPayouts() {
                 commissions: p.commissions,
                 net_total: computeNet(p),
                 status: 'pending',
-                confirmed_at: new Date().toISOString()
+                confirmed_at: new Date().toISOString(),
+                product_breakdown: p.productBreakdownByCategory,
+                previous_bodega: p.previousBodegaByCategory,
+                current_bodega: p.currentBodegaByCategory
             })
 
             const savingsInsert = p.savings > 0
@@ -564,4 +599,13 @@ watch(selectedSaturday, (newVal) => {
         previewPayouts()
     }
 })
+
+function sortedCategories(obj) {
+    if (!obj) return [];
+    return Object.entries(obj).sort(([a], [b]) => a.localeCompare(b));
+}
+function sortedProducts(obj) {
+    if (!obj) return [];
+    return Object.entries(obj).sort(([a], [b]) => a.localeCompare(b));
+}
 </script>

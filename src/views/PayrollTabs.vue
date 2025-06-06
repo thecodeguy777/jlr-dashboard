@@ -1,5 +1,5 @@
 <template>
-    <div class="min-h-screen bg-gray-900 text-white">
+    <div class="min-h-screen text-white">
         <!-- Tab Bar -->
         <div class="flex justify-around border-b border-white/20 text-sm text-white/70">
             <button v-for="tab in tabs" :key="tab" @click="activeTab = tab" :class="[

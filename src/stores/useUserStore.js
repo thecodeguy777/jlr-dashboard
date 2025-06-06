@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase'
 export const useUserStore = defineStore('user', {
   state: () => ({
     user: null,
-    role: null
+    role: null,
+    isAccountModalOpen: false,
   }),
   actions: {
     setUser(user) {
@@ -77,6 +78,13 @@ export const useUserStore = defineStore('user', {
       this.role = role
       localStorage.setItem('user', JSON.stringify(this.user))
       localStorage.setItem('role', role)
-    }
+    },
+
+    openAccountModal() {
+      this.isAccountModalOpen = true
+    },
+    closeAccountModal() {
+      this.isAccountModalOpen = false
+    },
   }
 })

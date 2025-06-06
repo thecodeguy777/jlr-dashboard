@@ -18,8 +18,9 @@ import EmployeePayout from '@/views/EmployeePayout.vue'
 import GeneratePayouts from '@/views/GeneratePayouts.vue'
 import SubconDeliveryForm from '../views/SubconDeliveryForm.vue'
 import CashTracker from '../views/CashTracker.vue'
-
-
+import NewSummary from '@/views/NewSummary.vue'
+import EmployeePayroll from '@/views/EmployeePayroll.vue'
+import MyPayroll from '@/views/MyPayroll.vue'
 const routes = [
   { path: '/', component: Home },
   { path: '/account', component: Account },
@@ -53,11 +54,6 @@ const routes = [
     meta: { requiresAuth: true, roles: ['admin'] }
   },
   {
-    path: '/payouts',
-    component: AdminPayouts,
-    meta: { requiresAuth: true, roles: ['admin'] }
-  },
-  {
     path: '/payout/:id',
     component: EmployeePayout,
     //meta: { requiresAuth: true, roles: ['admin', 'employee'] }
@@ -83,7 +79,16 @@ const routes = [
     component: EmployeeDashboard,
     meta: { requiresAuth: true, roles: ['employee'] }
   },
-
+  {
+    path: '/employee-payroll',
+    component: EmployeePayroll,
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
+  {
+    path: '/my-payroll',
+    component: MyPayroll,
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin', 'employee'] }
+  },
   // 🔐 Shared/utility routes
   {
     path: '/summary',
@@ -98,6 +103,10 @@ const routes = [
   {
     path: '/unauthorized',
     component: Unauthorized
+  },
+  {
+    path: '/newsummary',
+    component: NewSummary
   }
 ]
 
@@ -109,18 +118,24 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
-  if (to.meta.requiresAuth) {
-    if (!userStore.user) {
-      await userStore.fetchUser()
-    }
+  // Skip auth check for login page to prevent infinite loop
+  if (to.path === '/login') {
+    next()
+    return
+  }
 
-    if (!userStore.user) {
-      return next('/unauthorized')
-    }
+  // Check authentication for all routes (not just those with requiresAuth meta)
+  if (!userStore.user) {
+    await userStore.fetchUser()
+  }
 
-    if (to.meta.roles && !to.meta.roles.includes(userStore.role)) {
-      return next('/unauthorized')
-    }
+  if (!userStore.user) {
+    return next('/login')
+  }
+
+  // Check role-based authorization for routes that require specific roles
+  if (to.meta.requiresAuth && to.meta.roles && !to.meta.roles.includes(userStore.role)) {
+    return next('/unauthorized')
   }
 
   next()

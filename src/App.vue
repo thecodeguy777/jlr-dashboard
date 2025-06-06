@@ -2,7 +2,8 @@
   <!-- Render layout only after session is resolved -->
   <div v-if="!isLoading">
     <!-- Main App Layout (when logged in) -->
-    <div v-if="userStore.user" class="flex flex-col h-screen bg-gray-900 text-white overflow-hidden">
+    <div v-if="userStore.user"
+      class="flex flex-col h-screen bg-gradient-to-br from-gray-900 via-gray-950 to-gray-800 text-white overflow-hidden">
       <!-- Main Content -->
       <main class="flex-1 overflow-y-auto p-6 pb-20">
         <router-view />
@@ -40,6 +41,8 @@
     </div>
   </transition>
 
+  <AccountModal v-if="userStore.isAccountModalOpen" />
+
 </template>
 
 <script setup>
@@ -48,6 +51,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import { useUserStore } from '@/stores/useUserStore'
 import BottomNav from '@/components/BottomNav.vue'
+import AccountModal from '@/components/AccountModal.vue'
 
 const userStore = useUserStore()
 const router = useRouter()
