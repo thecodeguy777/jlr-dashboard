@@ -260,39 +260,63 @@ async function saveChanges() {
 
     const p = selected.value;
 
-    // Update the payout entry
-    const { error: payoutError } = await supabase
-        .from('payouts')
-        .update({
-            gross_income: p.gross_income,
-            paid_by_hours: p.hours_worked * p.hourly_rate,
-            deductions: p.deductions,
-            allowances: p.allowances,
-            commissions: p.commissions,
-            net_total: computeNet(p),
-            product_breakdown: p.productBreakdownByCategory,
-            previous_bodega: p.previousBodegaByCategory,
-            current_bodega: p.currentBodegaByCategory
-        })
-        .eq('employee_id', p.employee_id)
-        .eq('week_start', p.week_start);
+    try {
+        // Prepare the update data with proper type checking
+        const updateData = {
+            gross_income: Number(p.gross_income) || 0,
+            paid_by_hours: Number(p.hours_worked) * Number(p.hourly_rate) || 0,
+            deductions: p.deductions || {},
+            allowances: p.allowances || {},
+            commissions: p.commissions || {},
+            net_total: computeNet(p)
+        };
 
-    if (payoutError) {
-        console.error('❌ Failed to update payout:', payoutError);
+        console.log('🔄 Updating payout with data:', updateData);
+
+        // Update the payout entry
+        const { error: payoutError } = await supabase
+            .from('payouts')
+            .update(updateData)
+            .eq('employee_id', p.employee_id)
+            .eq('week_start', p.week_start);
+
+        if (payoutError) {
+            console.error('❌ Failed to update payout:', payoutError);
+            alert(`Failed to save changes: ${payoutError.message}`);
+            return;
+        }
+
+        console.log('✅ Payout updated successfully');
+    } catch (error) {
+        console.error('❌ Error in saveChanges:', error);
+        alert(`Error saving changes: ${error.message}`);
         return;
     }
 
     // Update savings if needed
-    if (p.savings > 0) {
-        await supabase
-            .from('savings')
-            .upsert({
-                worker_id: p.employee_id,
-                week_start: p.week_start,
-                amount: p.savings,
-                type: 'auto',
-                remarks: 'Weekly deduction',
-            }, { onConflict: ['worker_id', 'week_start'] });
+    try {
+        if (p.savings > 0) {
+            const { error: savingsError } = await supabase
+                .from('savings')
+                .upsert({
+                    worker_id: p.employee_id,
+                    week_start: p.week_start,
+                    amount: Number(p.savings) || 0,
+                    type: 'auto',
+                    remarks: 'Weekly deduction',
+                }, { onConflict: ['worker_id', 'week_start'] });
+
+            if (savingsError) {
+                console.error('❌ Failed to update savings:', savingsError);
+                alert(`Failed to save savings: ${savingsError.message}`);
+                return;
+            }
+            console.log('✅ Savings updated successfully');
+        }
+    } catch (error) {
+        console.error('❌ Error updating savings:', error);
+        alert(`Error saving savings: ${error.message}`);
+        return;
     }
 
     // Update in previews array
@@ -526,12 +550,8 @@ async function commitSinglePayout(p) {
         commissions: p.commissions,
         net_total: computeNet(p),
         status: 'pending',
-        confirmed_at: new Date().toISOString(),
-        product_breakdown: p.productBreakdownByCategory,
-        previous_bodega: p.previousBodegaByCategory,
-        current_bodega: p.currentBodegaByCategory
+        confirmed_at: new Date().toISOString()
     })
-
 
     if (p.savings > 0) {
         await supabase.from('savings').insert({
@@ -541,6 +561,32 @@ async function commitSinglePayout(p) {
             type: 'auto',
             remarks: 'Weekly deduction'
         })
+    }
+
+    // Update loan balance if there's a loan deduction
+    if (p.deductions?.loan && p.deductions.loan > 0) {
+        const { data: activeLoan } = await supabase
+            .from('loans')
+            .select('*')
+            .eq('worker_id', p.employee_id)
+            .eq('status', 'active')
+            .order('start_date', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+        if (activeLoan) {
+            const newBalance = Math.max(0, activeLoan.balance - p.deductions.loan)
+
+            await supabase
+                .from('loans')
+                .update({
+                    balance: newBalance,
+                    status: newBalance === 0 ? 'paid' : 'active'
+                })
+                .eq('id', activeLoan.id)
+
+            console.log(`💰 Updated loan ${activeLoan.id}: balance ${activeLoan.balance} → ${newBalance}`)
+        }
     }
 
     // Mark as committed in UI
@@ -563,10 +609,7 @@ async function commitPayouts() {
                 commissions: p.commissions,
                 net_total: computeNet(p),
                 status: 'pending',
-                confirmed_at: new Date().toISOString(),
-                product_breakdown: p.productBreakdownByCategory,
-                previous_bodega: p.previousBodegaByCategory,
-                current_bodega: p.currentBodegaByCategory
+                confirmed_at: new Date().toISOString()
             })
 
             const savingsInsert = p.savings > 0
@@ -579,8 +622,35 @@ async function commitPayouts() {
                 }, { onConflict: ['worker_id', 'week_start'] })
                 : Promise.resolve()
 
-            // Run both in parallel per worker
-            return Promise.all([payoutInsert, savingsInsert])
+            // Update loan balance if there's a loan deduction
+            const loanUpdate = (p.deductions?.loan && p.deductions.loan > 0)
+                ? supabase
+                    .from('loans')
+                    .select('*')
+                    .eq('worker_id', p.employee_id)
+                    .eq('status', 'active')
+                    .order('start_date', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+                    .then(({ data: activeLoan }) => {
+                        if (activeLoan) {
+                            const newBalance = Math.max(0, activeLoan.balance - p.deductions.loan)
+                            console.log(`💰 Updating loan ${activeLoan.id}: ${activeLoan.balance} → ${newBalance}`)
+
+                            return supabase
+                                .from('loans')
+                                .update({
+                                    balance: newBalance,
+                                    status: newBalance === 0 ? 'paid' : 'active'
+                                })
+                                .eq('id', activeLoan.id)
+                        }
+                        return Promise.resolve()
+                    })
+                : Promise.resolve()
+
+            // Run all operations in parallel per worker
+            return Promise.all([payoutInsert, savingsInsert, loanUpdate])
         })
 
     await Promise.all(inserts)

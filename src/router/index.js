@@ -21,6 +21,7 @@ import CashTracker from '../views/CashTracker.vue'
 import NewSummary from '@/views/NewSummary.vue'
 import EmployeePayroll from '@/views/EmployeePayroll.vue'
 import MyPayroll from '@/views/MyPayroll.vue'
+import CompanyLoans from '@/views/CompanyLoans.vue'
 const routes = [
   { path: '/', component: Home },
   { path: '/account', component: Account },
@@ -89,6 +90,11 @@ const routes = [
     component: MyPayroll,
     meta: { requiresAuth: true, roles: ['admin', 'employee_admin', 'employee'] }
   },
+  {
+    path: '/loan',
+    component: CompanyLoans,
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
   // 🔐 Shared/utility routes
   {
     path: '/summary',
@@ -118,8 +124,8 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
-  // Skip auth check for login page to prevent infinite loop
-  if (to.path === '/login') {
+  // Skip auth check for login page and payout pages to prevent infinite loop
+  if (to.path === '/login' || to.path.startsWith('/payout/')) {
     next()
     return
   }
