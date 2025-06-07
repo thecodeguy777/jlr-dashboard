@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen text-white p-6 space-y-8">
+  <div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-950 to-gray-800 text-white p-6 space-y-8">
     <!-- Enhanced Header -->
     <div class="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
       <div class="space-y-2">
@@ -360,7 +360,7 @@
               <div class="flex items-center justify-between">
                 <span class="text-green-300 font-medium text-sm">Total Stock Value</span>
                 <span class="text-green-400 font-bold text-lg">₱{{ Math.round(getTotalStockValue).toLocaleString()
-                  }}</span>
+                }}</span>
               </div>
             </div>
           </div>
