@@ -126,7 +126,8 @@
           </div>
           <div class="text-center">
             <p class="text-green-100/80 text-xs font-medium">Cash Advance</p>
-            <p class="text-red-200 font-bold text-lg">-₱{{ Math.round(payout?.cash_advance || 0).toLocaleString() }}</p>
+            <p class="text-red-200 font-bold text-lg">-₱{{ payout?.deductions?.cash_advance ?
+              Math.round(payout.deductions.cash_advance).toLocaleString() : '0' }}</p>
           </div>
           <div class="text-center">
             <p class="text-green-100/80 text-xs font-medium">Status</p>
@@ -290,7 +291,8 @@
                 </svg>
                 <span class="text-red-300 text-sm font-medium">Cash Advance</span>
               </div>
-              <p class="text-white text-xl font-bold">-₱{{ Math.round(payout.cash_advance || 0).toLocaleString() }}</p>
+              <p class="text-white text-xl font-bold">-₱{{ Math.round(payout.deductions?.cash_advance ||
+                0).toLocaleString() }}</p>
             </div>
 
             <div class="bg-purple-500/10 rounded-xl p-4 border border-purple-500/20">

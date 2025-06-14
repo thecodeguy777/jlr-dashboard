@@ -20,7 +20,7 @@
                 <div class="bg-orange-600/20 rounded-lg px-4 py-2 border border-orange-500/30">
                     <span class="text-white/60 text-sm">Total Refunds:</span>
                     <span class="text-orange-400 font-bold text-lg ml-2">₱{{ Math.abs(totalRefunds).toLocaleString()
-                        }}</span>
+                    }}</span>
                 </div>
             </div>
         </div>
@@ -109,7 +109,7 @@
                         <div>
                             <span class="text-white/60 block">Total Refunds:</span>
                             <span class="text-orange-400 font-bold">₱{{ Math.abs(employee.totalRefunds).toLocaleString()
-                            }}</span>
+                                }}</span>
                         </div>
                     </div>
 
@@ -132,7 +132,7 @@
                             </div>
                             <div class="text-right">
                                 <span class="text-white/60 text-xs">{{ formatDate(getTransactionDate(transaction))
-                                }}</span>
+                                    }}</span>
                                 <div class="text-white/40 text-xs">{{ getTransactionType(transaction) }}</div>
                             </div>
                         </div>
@@ -262,7 +262,7 @@
                                 <div class="flex justify-between">
                                     <span class="text-white/60">Current Balance:</span>
                                     <span class="text-green-400">₱{{ selectedEmployee?.totalSavings.toLocaleString()
-                                        }}</span>
+                                    }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-white/60">Addition Amount:</span>
@@ -330,7 +330,7 @@
                                 <div class="flex justify-between">
                                     <span class="text-white/60">Current Balance:</span>
                                     <span class="text-green-400">₱{{ selectedEmployee?.totalSavings.toLocaleString()
-                                        }}</span>
+                                    }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-white/60">Refund Amount:</span>
@@ -542,21 +542,64 @@ async function addSavings() {
 
     try {
         const addAmount = parseFloat(refundForm.value.amount)
-        const todayDate = new Date().toISOString().split('T')[0]
+        const today = new Date().toISOString().split('T')[0]
 
-        console.log('🔍 Adding savings with date:', todayDate)
+        console.log('🔍 Adding savings for date:', today)
 
-        // Insert positive amount for savings addition
-        const { data, error } = await supabase
+        // Check if there's already a manual entry for today
+        const { data: existingManual, error: checkError } = await supabase
             .from('savings')
-            .insert({
-                worker_id: selectedEmployee.value.id,
-                amount: addAmount, // Positive for addition
-                type: 'manual',
-                remarks: `${refundForm.value.reason}${refundForm.value.notes ? ` - ${refundForm.value.notes}` : ''}`,
-                week_start: todayDate
-            })
-            .select()
+            .select('*')
+            .eq('worker_id', selectedEmployee.value.id)
+            .eq('week_start', today)
+            .eq('type', 'manual')
+            .single()
+
+        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
+            console.error('Error checking existing manual entry:', checkError)
+            alert('Error checking existing entries. Please try again.')
+            return
+        }
+
+        let data, error
+
+        if (existingManual) {
+            // Update existing manual entry by adding to it
+            const newAmount = parseFloat(existingManual.amount) + addAmount
+            const updatedRemarks = `${existingManual.remarks} + ${refundForm.value.reason} (₱${addAmount.toLocaleString()})`
+
+            const result = await supabase
+                .from('savings')
+                .update({
+                    amount: newAmount,
+                    remarks: updatedRemarks
+                })
+                .eq('id', existingManual.id)
+                .select()
+
+            data = result.data
+            error = result.error
+            console.log('✅ Updated existing manual entry')
+        } else {
+            // Use upsert to handle any conflicts automatically
+            const result = await supabase
+                .from('savings')
+                .upsert({
+                    worker_id: selectedEmployee.value.id,
+                    amount: addAmount,
+                    type: 'manual',
+                    remarks: `${refundForm.value.reason}${refundForm.value.notes ? ` - ${refundForm.value.notes}` : ''}`,
+                    week_start: today
+                }, {
+                    onConflict: ['worker_id', 'week_start'],
+                    ignoreDuplicates: false
+                })
+                .select()
+
+            data = result.data
+            error = result.error
+            console.log('✅ Upserted manual entry')
+        }
 
         if (error) {
             console.error('Error adding savings:', error)
@@ -564,12 +607,12 @@ async function addSavings() {
             return
         }
 
-        console.log('✅ Savings added successfully:', data[0])
+        console.log('✅ Savings processed successfully:', data[0])
 
         alert(`₱${addAmount.toLocaleString()} added to savings successfully!`)
         closeRefundModal()
 
-        // Refresh data to get updated totals (this will fetch from DB)
+        // Refresh data to get updated totals
         await fetchEmployeesAndSavings()
 
     } catch (error) {
@@ -583,21 +626,61 @@ async function processRefund() {
 
     try {
         const refundAmount = parseFloat(refundForm.value.amount)
-        const todayDate = new Date().toISOString().split('T')[0]
+        const today = new Date().toISOString().split('T')[0]
 
-        console.log('🔍 Processing refund with date:', todayDate)
+        console.log('🔍 Processing refund for date:', today)
 
-        // Insert negative amount for refund
-        const { data, error } = await supabase
+        // Check if there's already a refund entry for today
+        const { data: existingRefund, error: checkError } = await supabase
             .from('savings')
-            .insert({
-                worker_id: selectedEmployee.value.id,
-                amount: -refundAmount, // Negative for refund
-                type: 'refund',
-                remarks: `${refundForm.value.reason}${refundForm.value.notes ? ` - ${refundForm.value.notes}` : ''}`,
-                week_start: todayDate
-            })
-            .select()
+            .select('*')
+            .eq('worker_id', selectedEmployee.value.id)
+            .eq('week_start', today)
+            .eq('type', 'refund')
+            .single()
+
+        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
+            console.error('Error checking existing refund:', checkError)
+            alert('Error checking existing refunds. Please try again.')
+            return
+        }
+
+        let data, error
+
+        if (existingRefund) {
+            // Update existing refund entry by adding to it (making it more negative)
+            const newAmount = parseFloat(existingRefund.amount) - refundAmount
+            const updatedRemarks = `${existingRefund.remarks} + ${refundForm.value.reason} (₱${refundAmount.toLocaleString()})`
+
+            const result = await supabase
+                .from('savings')
+                .update({
+                    amount: newAmount,
+                    remarks: updatedRemarks
+                })
+                .eq('id', existingRefund.id)
+                .select()
+
+            data = result.data
+            error = result.error
+            console.log('✅ Updated existing refund entry')
+        } else {
+            // Create new refund entry
+            const result = await supabase
+                .from('savings')
+                .insert({
+                    worker_id: selectedEmployee.value.id,
+                    amount: -refundAmount, // Negative for refund
+                    type: 'refund',
+                    remarks: `${refundForm.value.reason}${refundForm.value.notes ? ` - ${refundForm.value.notes}` : ''}`,
+                    week_start: today
+                })
+                .select()
+
+            data = result.data
+            error = result.error
+            console.log('✅ Created new refund entry')
+        }
 
         if (error) {
             console.error('Error processing refund:', error)
@@ -610,7 +693,7 @@ async function processRefund() {
         alert(`Refund of ₱${refundAmount.toLocaleString()} processed successfully!`)
         closeRefundModal()
 
-        // Refresh data to get updated totals (this will fetch from DB)
+        // Refresh data to get updated totals
         await fetchEmployeesAndSavings()
 
     } catch (error) {
