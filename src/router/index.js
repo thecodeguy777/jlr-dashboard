@@ -22,6 +22,8 @@ import NewSummary from '@/views/NewSummary.vue'
 import EmployeePayroll from '@/views/EmployeePayroll.vue'
 import MyPayroll from '@/views/MyPayroll.vue'
 import CompanyLoans from '@/views/CompanyLoans.vue'
+import SavingsSummary from '@/views/SavingsSummary.vue'
+import CompanySavings from '@/views/CompanySavings.vue'
 const routes = [
   { path: '/', component: Home },
   { path: '/account', component: Account },
@@ -68,7 +70,7 @@ const routes = [
   {
     path: '/executive',
     component: ExecutiveDashboard,
-    meta: { requiresAuth: true, roles: ['executive'] }
+    meta: { requiresAuth: true, roles: ['executive', 'admin'] }
   },
   {
     path: '/input',
@@ -93,6 +95,16 @@ const routes = [
   {
     path: '/loan',
     component: CompanyLoans,
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
+  {
+    path: '/savings/:id?',
+    component: SavingsSummary,
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
+  {
+    path: '/company-savings',
+    component: CompanySavings,
     meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
   },
   // 🔐 Shared/utility routes

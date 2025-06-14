@@ -7,6 +7,7 @@ import DeliveryTable from '../components/DeliveryTable.vue'
 import DeliveryForm from '../components/DeliveryForm.vue'
 import { useDeliveries } from '../composables/useDeliveries'
 import { supabase } from '../lib/supabase'
+import { format } from 'date-fns'
 
 // State
 const level = ref('weekly')
@@ -27,6 +28,10 @@ const selectedProducts = ref([])
 const showFilters = ref(false)
 const showCharts = ref(true)
 
+// Stock data for payroll calculations
+const previousStockData = ref([])
+const currentStockData = ref([])
+
 const formData = ref({
   worker_id: '', product_id: '', quantity: 1,
   delivery_date: getCurrentDate(), notes: ''
@@ -38,6 +43,8 @@ const { deliveries, fetchDeliveries } = useDeliveries()
 // Watchers
 onMounted(() => {
   watch(deliveries, () => { isLoading.value = false }, { immediate: true })
+  // Fetch stock data when deliveries change
+  watch([deliveries, level, deliveryDate], fetchStockData, { immediate: true })
 })
 
 // Utility
@@ -77,6 +84,85 @@ const monthEnd = computed(() => {
   end.setMilliseconds(-1)
   return end
 })
+
+// Stock fetching function
+async function fetchStockData() {
+  if (!deliveries.value?.length) return
+
+  try {
+    let startDate, endDate
+
+    if (level.value === 'weekly') {
+      startDate = format(weekStart.value, 'yyyy-MM-dd')
+      endDate = format(weekEnd.value, 'yyyy-MM-dd')
+    } else if (level.value === 'monthly') {
+      startDate = format(monthStart.value, 'yyyy-MM-dd')
+      endDate = format(monthEnd.value, 'yyyy-MM-dd')
+    } else {
+      startDate = deliveryDate.value
+      endDate = deliveryDate.value
+    }
+
+    // Calculate previous Saturday for stock comparison
+    // Use the existing week logic but get the Saturday before week start
+    const currentWeekStart = new Date(weekStart.value)
+    const prevSaturday = new Date(currentWeekStart)
+    prevSaturday.setDate(prevSaturday.getDate() - 1) // -1 day from week start to get previous Saturday
+    const prevWeekStr = format(prevSaturday, 'yyyy-MM-dd')
+
+
+
+    // Fetch previous stock (week before the current period)
+    const { data: prevStock, error: prevError } = await supabase
+      .from('bodega_stock')
+      .select('quantity, product_id, worker_id, products(name, category, price_per_unit)')
+      .eq('week_start', prevWeekStr)
+
+    // If no exact match for previous week, try to find the most recent stock before current period
+    if (!prevStock || prevStock.length === 0) {
+      const { data: recentStock, error: recentError } = await supabase
+        .from('bodega_stock')
+        .select('quantity, product_id, worker_id, week_start, products(name, category, price_per_unit)')
+        .lt('week_start', startDate)
+        .order('week_start', { ascending: false })
+        .limit(50) // Get recent entries
+
+      previousStockData.value = recentStock || []
+    } else {
+      previousStockData.value = prevStock || []
+    }
+
+    // Fetch current stock (for the current period)
+    const { data: currStock, error: currError } = await supabase
+      .from('bodega_stock')
+      .select('quantity, product_id, worker_id, products(name, category, price_per_unit)')
+      .eq('week_start', startDate)
+
+    if (prevError) console.error('Error fetching previous stock:', prevError)
+    if (currError) console.error('Error fetching current stock:', currError)
+
+    currentStockData.value = currStock || []
+
+  } catch (error) {
+    console.error('Error fetching stock data:', error)
+    previousStockData.value = []
+    currentStockData.value = []
+  }
+}
+
+// Helper function to get previous stock quantity for a worker and product
+function getPreviousStockQuantity(workerId, productId) {
+  // If we have multiple stock entries for the same worker/product, sum them up
+  const stockItems = previousStockData.value.filter(
+    item => item.worker_id === workerId && item.product_id === productId
+  )
+
+  const totalQuantity = stockItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+
+
+
+  return totalQuantity
+}
 
 // Data Filtering
 // Check for missing data in delivery records
@@ -172,7 +258,7 @@ const filteredDeliveries = computed(() => {
   return results
 })
 
-// Payroll analysis
+// Payroll analysis with stock deduction
 const payrollAnalysis = computed(() => {
   const analysis = {
     totalRecords: filteredDeliveries.value.length,
@@ -180,13 +266,20 @@ const payrollAnalysis = computed(() => {
     workerSummary: {}
   }
 
+
+
   // Group by worker for payroll summary
   filteredDeliveries.value.forEach(d => {
     const workerName = d.workers?.name || 'Unknown Worker'
+    const workerId = d.workers?.id
+
     if (!analysis.workerSummary[workerName]) {
       analysis.workerSummary[workerName] = {
+        workerId: workerId,
         totalQuantity: 0,
         totalValue: 0,
+        netQuantity: 0, // New: net quantity after stock deduction
+        netValue: 0,    // New: net value after stock deduction
         recordCount: 0,
         missingDataCount: 0,
         records: [],
@@ -194,7 +287,13 @@ const payrollAnalysis = computed(() => {
           'Single Walled': {},
           'Double Walled': {},
           'Miscellaneous': {}
-        }
+        },
+        netProductBreakdown: { // New: net breakdown after stock deduction
+          'Single Walled': {},
+          'Double Walled': {},
+          'Miscellaneous': {}
+        },
+        stockDeductions: {} // New: track stock deductions by product
       }
     }
 
@@ -202,13 +301,15 @@ const payrollAnalysis = computed(() => {
     const quantity = d.quantity || 0
     const productName = d.products?.name || 'Unknown Product'
     const category = d.products?.category || 'Miscellaneous'
+    const productId = d.products?.id // Fixed: use d.products.id instead of d.product_id
 
+    // Original calculations (gross)
     analysis.workerSummary[workerName].totalQuantity += quantity
     analysis.workerSummary[workerName].totalValue += quantity * price
     analysis.workerSummary[workerName].recordCount += 1
     analysis.workerSummary[workerName].records.push(d)
 
-    // Group by product within category
+    // Group by product within category (gross)
     if (!analysis.workerSummary[workerName].productBreakdown[category]) {
       analysis.workerSummary[workerName].productBreakdown[category] = {}
     }
@@ -223,6 +324,51 @@ const payrollAnalysis = computed(() => {
     analysis.workerSummary[workerName].productBreakdown[category][productName].quantity += quantity
     analysis.workerSummary[workerName].productBreakdown[category][productName].value += quantity * price
 
+    // NEW: Calculate net quantities and values (after stock deduction)
+    const previousStockQty = getPreviousStockQuantity(workerId, productId)
+
+
+
+    // Track stock deductions by product
+    if (!analysis.workerSummary[workerName].stockDeductions[productName]) {
+      analysis.workerSummary[workerName].stockDeductions[productName] = {
+        previousStock: 0,
+        deliveredQty: 0,
+        netQty: 0
+      }
+    }
+
+    analysis.workerSummary[workerName].stockDeductions[productName].previousStock = previousStockQty
+    analysis.workerSummary[workerName].stockDeductions[productName].deliveredQty += quantity
+
+    // Calculate net quantity for this delivery (delivery - proportional previous stock)
+    const netQuantity = Math.max(0, quantity - previousStockQty)
+    const netValue = netQuantity * price
+
+    analysis.workerSummary[workerName].netQuantity += netQuantity
+    analysis.workerSummary[workerName].netValue += netValue
+
+    analysis.workerSummary[workerName].stockDeductions[productName].netQty =
+      Math.max(0, analysis.workerSummary[workerName].stockDeductions[productName].deliveredQty - previousStockQty)
+
+    // Group net calculations by product within category
+    if (!analysis.workerSummary[workerName].netProductBreakdown[category]) {
+      analysis.workerSummary[workerName].netProductBreakdown[category] = {}
+    }
+
+    if (!analysis.workerSummary[workerName].netProductBreakdown[category][productName]) {
+      analysis.workerSummary[workerName].netProductBreakdown[category][productName] = {
+        quantity: 0,
+        value: 0,
+        previousStock: previousStockQty,
+        grossQuantity: 0
+      }
+    }
+
+    analysis.workerSummary[workerName].netProductBreakdown[category][productName].quantity += netQuantity
+    analysis.workerSummary[workerName].netProductBreakdown[category][productName].value += netValue
+    analysis.workerSummary[workerName].netProductBreakdown[category][productName].grossQuantity += quantity
+
     if (hasMissingData(d)) {
       analysis.workerSummary[workerName].missingDataCount += 1
     }
@@ -230,7 +376,6 @@ const payrollAnalysis = computed(() => {
 
   return analysis
 })
-
 
 // Labels
 const formattedDate = computed(() => formatDate(deliveryDate.value))
@@ -596,6 +741,8 @@ function hasActiveFilters() {
       <div v-if="showPayrollSummary" class="bg-white/5 rounded-xl p-6">
         <h3 class="text-lg font-semibold text-white mb-4">👥 Worker Payroll Summary</h3>
 
+        <!-- Debug Info -->
+
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           <div v-for="(worker, name) in payrollAnalysis.workerSummary" :key="name"
             class="bg-white/5 rounded-lg p-5 border border-white/10">
@@ -621,24 +768,52 @@ function hasActiveFilters() {
                 class="space-y-2">
                 <h5 class="font-medium text-white/80 text-sm border-b border-white/10 pb-1">{{ category }}:</h5>
                 <div class="space-y-1 ml-2">
-                  <div v-for="(productData, productName) in products" :key="productName"
-                    class="flex justify-between text-sm">
-                    <span class="text-white/70">- {{ productName }}:</span>
-                    <span class="text-white/90 font-medium">{{ productData.quantity }} pcs</span>
+                  <div v-for="(productData, productName) in products" :key="productName" class="space-y-1">
+                    <!-- Gross quantity -->
+                    <div class="flex justify-between text-sm">
+                      <span class="text-white/70">- {{ productName }} (Gross):</span>
+                      <span class="text-blue-300 font-medium">{{ productData.quantity }} pcs</span>
+                    </div>
+                    <!-- Net quantity with stock deduction info -->
+                    <div v-if="worker.stockDeductions[productName]" class="flex justify-between text-xs ml-4">
+                      <span class="text-green-200/70">Net (After {{ worker.stockDeductions[productName].previousStock }}
+                        prev stock):</span>
+                      <span class="text-green-300 font-medium">{{ worker.stockDeductions[productName].netQty }}
+                        pcs</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
             <!-- Total Value -->
-            <div class="pt-3 border-t border-white/10">
-              <div class="flex justify-between items-center">
-                <span class="text-white/70 font-medium">Total Value:</span>
-                <span class="text-green-400 font-bold text-lg">₱{{ worker.totalValue.toLocaleString() }}</span>
+            <div class="pt-3 border-t border-white/10 space-y-3">
+              <!-- Gross Values -->
+              <div>
+                <div class="flex justify-between items-center">
+                  <span class="text-white/70 font-medium">Gross Value:</span>
+                  <span class="text-blue-400 font-bold text-lg">₱{{ worker.totalValue.toLocaleString() }}</span>
+                </div>
+                <div class="flex justify-between items-center text-sm mt-1">
+                  <span class="text-white/60">Gross Quantity:</span>
+                  <span class="text-white/80">{{ worker.totalQuantity }} pcs</span>
+                </div>
               </div>
-              <div class="flex justify-between items-center text-sm mt-1">
-                <span class="text-white/60">Total Quantity:</span>
-                <span class="text-white/80">{{ worker.totalQuantity }} pcs</span>
+
+              <!-- Net Values (After Stock Deduction) -->
+              <div class="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
+                <div class="flex justify-between items-center">
+                  <span class="text-green-300 font-medium">Net Value (After Stock):</span>
+                  <span class="text-green-400 font-bold text-lg">₱{{ worker.netValue.toLocaleString() }}</span>
+                </div>
+                <div class="flex justify-between items-center text-sm mt-1">
+                  <span class="text-green-200/80">Net Quantity:</span>
+                  <span class="text-green-200">{{ worker.netQuantity }} pcs</span>
+                </div>
+                <div class="flex justify-between items-center text-xs mt-1 text-green-200/60">
+                  <span>Stock Deduction Applied</span>
+                  <span>{{ (worker.totalQuantity - worker.netQuantity) }} pcs deducted</span>
+                </div>
               </div>
             </div>
 

@@ -11,21 +11,26 @@
                 </div>
             </div>
             <div class="flex flex-col gap-4">
-                <button @click="goTo('loan')"
-                    class="w-full text-left px-5 py-4 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-white/10 dark:hover:bg-white/20 shadow-lg transition flex items-center gap-3 border border-white/10 backdrop-blur-md">
-                    <span class="text-2xl">➕</span>
-                    <span class="font-semibold">Add New Loan</span>
-                </button>
-                <button @click="goTo('refund')"
-                    class="w-full text-left px-5 py-4 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-white/10 dark:hover:bg-white/20 shadow-lg transition flex items-center gap-3 border border-white/10 backdrop-blur-md">
-                    <span class="text-2xl">💸</span>
-                    <span class="font-semibold">Refund Savings</span>
-                </button>
-                <button @click="goTo('payroll')"
-                    class="w-full text-left px-5 py-4 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-white/10 dark:hover:bg-white/20 shadow-lg transition flex items-center gap-3 border border-white/10 backdrop-blur-md">
-                    <span class="text-2xl">📝</span>
-                    <span class="font-semibold">Generate Payroll</span>
-                </button>
+                <!-- Admin only options -->
+                <template v-if="userStore.role === 'admin'">
+                    <button @click="goTo('loan')"
+                        class="w-full text-left px-5 py-4 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-white/10 dark:hover:bg-white/20 shadow-lg transition flex items-center gap-3 border border-white/10 backdrop-blur-md">
+                        <span class="text-2xl">➕</span>
+                        <span class="font-semibold">Add New Loan</span>
+                    </button>
+                    <button @click="goTo('refund')"
+                        class="w-full text-left px-5 py-4 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-white/10 dark:hover:bg-white/20 shadow-lg transition flex items-center gap-3 border border-white/10 backdrop-blur-md">
+                        <span class="text-2xl">💸</span>
+                        <span class="font-semibold">Refund Savings</span>
+                    </button>
+                    <button @click="goTo('payroll')"
+                        class="w-full text-left px-5 py-4 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-white/10 dark:hover:bg-white/20 shadow-lg transition flex items-center gap-3 border border-white/10 backdrop-blur-md">
+                        <span class="text-2xl">📝</span>
+                        <span class="font-semibold">Generate Payroll</span>
+                    </button>
+                </template>
+
+                <!-- Logout button for all roles -->
                 <button @click="logout"
                     class="w-full text-left px-5 py-4 rounded-xl bg-red-700/80 hover:bg-red-800/90 dark:bg-red-800/80 dark:hover:bg-red-900/90 shadow-lg transition flex items-center gap-3 mt-2 border border-red-400/20 backdrop-blur-md">
                     <span class="text-2xl">🚪</span>
@@ -46,10 +51,9 @@ const userStore = useUserStore()
 const darkMode = ref(true)
 const router = useRouter()
 
-
 function goTo(action) {
-    if (action === 'loan') router.push('/loans/new')
-    if (action === 'refund') router.push('/savings/refund')
+    if (action === 'loan') router.push('/loan')
+    if (action === 'refund') router.push('/company-savings')
     if (action === 'payroll') router.push('/payroll')
     userStore.closeAccountModal()
 }

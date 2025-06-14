@@ -7,8 +7,17 @@
             <span class="mt-0.5">Home</span>
         </button>
 
-        <!-- Summary (Admin + Executive) -->
-        <router-link v-if="['admin', 'executive'].includes(userStore.role)" to="/summary" v-slot="{ isActive }">
+        <!-- Executive Dashboard (Executive Only) -->
+        <router-link v-if="userStore.role === 'executive'" to="/executive" v-slot="{ isActive }">
+            <div
+                :class="['flex flex-col items-center justify-center text-xs', { 'text-purple-400 font-semibold': isActive }]">
+                <BarChart class="w-5 h-5" />
+                <span class="mt-0.5">Dashboard</span>
+            </div>
+        </router-link>
+
+        <!-- Summary (Admin Only) -->
+        <router-link v-if="userStore.role === 'admin'" to="/summary" v-slot="{ isActive }">
             <div
                 :class="['flex flex-col items-center justify-center text-xs', { 'text-green-400 font-semibold': isActive }]">
                 <BarChart class="w-5 h-5" />

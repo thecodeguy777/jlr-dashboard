@@ -16,6 +16,10 @@ const subconDeliveries = ref([])
 const subcontractorNameFilter = ref('')
 const showMissingDataOnly = ref(false)
 const showPayrollSummary = ref(false)
+const selectedCategories = ref([])
+const selectedProducts = ref([])
+const showFilters = ref(false)
+const showCharts = ref(true)
 
 function getCurrentDate() {
     const today = new Date()
@@ -83,6 +87,28 @@ const availableSubcontractors = computed(() => {
     return Array.from(subcontractors).sort()
 })
 
+// Get all unique categories for filtering
+const availableCategories = computed(() => {
+    const categories = new Set()
+    subconDeliveries.value?.forEach(d => {
+        if (d.products?.category) {
+            categories.add(d.products.category)
+        }
+    })
+    return Array.from(categories).sort()
+})
+
+// Get all unique products for filtering
+const availableProducts = computed(() => {
+    const products = new Set()
+    subconDeliveries.value?.forEach(d => {
+        if (d.products?.name) {
+            products.add(d.products.name)
+        }
+    })
+    return Array.from(products).sort()
+})
+
 const filteredDeliveries = computed(() => {
     let results = Array.isArray(subconDeliveries.value) ? subconDeliveries.value : []
 
@@ -105,6 +131,20 @@ const filteredDeliveries = computed(() => {
     if (subcontractorNameFilter.value) {
         results = results.filter(d =>
             d.subcontractors?.name?.toLowerCase().includes(subcontractorNameFilter.value.toLowerCase())
+        )
+    }
+
+    // Filter by categories
+    if (selectedCategories.value.length > 0) {
+        results = results.filter(d =>
+            selectedCategories.value.includes(d.products?.category)
+        )
+    }
+
+    // Filter by products
+    if (selectedProducts.value.length > 0) {
+        results = results.filter(d =>
+            selectedProducts.value.includes(d.products?.name)
         )
     }
 
@@ -256,6 +296,39 @@ function getNonZeroProducts(productBreakdown) {
     })
     return result
 }
+
+// Filter management functions
+function toggleCategory(category) {
+    const index = selectedCategories.value.indexOf(category)
+    if (index > -1) {
+        selectedCategories.value.splice(index, 1)
+    } else {
+        selectedCategories.value.push(category)
+    }
+}
+
+function toggleProduct(product) {
+    const index = selectedProducts.value.indexOf(product)
+    if (index > -1) {
+        selectedProducts.value.splice(index, 1)
+    } else {
+        selectedProducts.value.push(product)
+    }
+}
+
+function clearAllFilters() {
+    subcontractorNameFilter.value = ''
+    selectedCategories.value = []
+    selectedProducts.value = []
+    showMissingDataOnly.value = false
+}
+
+function hasActiveFilters() {
+    return subcontractorNameFilter.value ||
+        selectedCategories.value.length > 0 ||
+        selectedProducts.value.length > 0 ||
+        showMissingDataOnly.value
+}
 </script>
 
 
@@ -349,6 +422,37 @@ function getNonZeroProducts(productBreakdown) {
 
                     <!-- Right: Actions -->
                     <div class="flex gap-2">
+                        <button @click="showFilters = !showFilters" :class="[
+                            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                            showFilters
+                                ? 'bg-purple-600 text-white shadow-lg'
+                                : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+                        ]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.414A1 1 0 013 6.707V4z">
+                                </path>
+                            </svg>
+                            Filters
+                            <span v-if="hasActiveFilters()" class="bg-white/20 text-xs px-2 py-0.5 rounded-full">
+                                {{ (selectedCategories.length + selectedProducts.length + (subcontractorNameFilter ? 1 :
+                                    0) +
+                                    (showMissingDataOnly ? 1 : 0)) }}
+                            </span>
+                        </button>
+                        <button @click="showCharts = !showCharts" :class="[
+                            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                            showCharts
+                                ? 'bg-orange-600 text-white shadow-lg'
+                                : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+                        ]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    :d="showCharts ? 'M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L12 12m-2.122-2.122L12 12m0 0l2.121 2.121M12 12l2.121-2.121m-2.121 2.121L12 12' : 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'">
+                                </path>
+                            </svg>
+                            {{ showCharts ? 'Hide' : 'Show' }} Charts
+                        </button>
                         <button @click="showPayrollSummary = !showPayrollSummary" :class="[
                             'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                             showPayrollSummary
@@ -361,6 +465,79 @@ function getNonZeroProducts(productBreakdown) {
                                 </path>
                             </svg>
                             {{ showPayrollSummary ? 'Hide' : 'Show' }} Summary
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Advanced Filters Panel -->
+                <div v-if="showFilters" class="border-t border-white/10 pt-4 space-y-4">
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <!-- Category Filter -->
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-white/70 mb-2">Categories:</label>
+                            <div class="flex flex-wrap gap-2">
+                                <button v-for="category in availableCategories" :key="category"
+                                    @click="toggleCategory(category)" :class="[
+                                        'px-3 py-1.5 rounded-full text-xs font-medium transition-all',
+                                        selectedCategories.includes(category)
+                                            ? 'bg-purple-600 text-white ring-2 ring-purple-400'
+                                            : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+                                    ]">
+                                    {{ category }}
+                                    <span v-if="selectedCategories.includes(category)" class="ml-1">✓</span>
+                                </button>
+                                <span v-if="availableCategories.length === 0" class="text-white/40 text-xs py-1.5">No
+                                    categories
+                                    available</span>
+                            </div>
+                        </div>
+
+                        <!-- Product Filter -->
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-white/70 mb-2">Products:</label>
+                            <div class="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                <button v-for="product in availableProducts" :key="product"
+                                    @click="toggleProduct(product)" :class="[
+                                        'px-3 py-1.5 rounded-full text-xs font-medium transition-all',
+                                        selectedProducts.includes(product)
+                                            ? 'bg-green-600 text-white ring-2 ring-green-400'
+                                            : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+                                    ]">
+                                    {{ product }}
+                                    <span v-if="selectedProducts.includes(product)" class="ml-1">✓</span>
+                                </button>
+                                <span v-if="availableProducts.length === 0" class="text-white/40 text-xs py-1.5">No
+                                    products
+                                    available</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Filters & Clear -->
+                    <div v-if="hasActiveFilters()"
+                        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 bg-white/5 rounded-lg border border-white/10">
+                        <div class="flex flex-wrap gap-2">
+                            <span class="text-white/70 text-sm font-medium">Active filters:</span>
+                            <span v-if="subcontractorNameFilter"
+                                class="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-xs">
+                                Subcontractor: "{{ subcontractorNameFilter }}"
+                            </span>
+                            <span v-for="category in selectedCategories" :key="category"
+                                class="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-xs">
+                                Category: {{ category }}
+                            </span>
+                            <span v-for="product in selectedProducts" :key="product"
+                                class="bg-green-500/20 text-green-300 px-2 py-1 rounded text-xs">
+                                Product: {{ product }}
+                            </span>
+                            <span v-if="showMissingDataOnly"
+                                class="bg-red-500/20 text-red-300 px-2 py-1 rounded text-xs">
+                                Missing data only
+                            </span>
+                        </div>
+                        <button @click="clearAllFilters()"
+                            class="text-white/60 hover:text-white text-sm underline transition-colors">
+                            Clear all filters
                         </button>
                     </div>
                 </div>
@@ -446,11 +623,13 @@ function getNonZeroProducts(productBreakdown) {
             </div>
 
             <!-- Charts -->
-            <div class="rounded-2xl bg-green-900/10 p-6 xl:p-8">
-                <DeliveryBarChart :data="barChartData" />
-            </div>
-            <div class="rounded-2xl bg-green-900/10 p-6 xl:p-8">
-                <ProductPieChart :data="pieChartData" />
+            <div v-if="showCharts" class="space-y-8">
+                <div class="rounded-2xl bg-green-900/10 p-6 xl:p-8">
+                    <DeliveryBarChart :data="barChartData" />
+                </div>
+                <div class="rounded-2xl bg-green-900/10 p-6 xl:p-8">
+                    <ProductPieChart :data="pieChartData" />
+                </div>
             </div>
 
 

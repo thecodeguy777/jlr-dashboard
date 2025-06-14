@@ -295,7 +295,9 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="person in payoutBreakdown" :key="person.name" class="border-b border-white/5">
+              <tr v-for="person in payoutBreakdown" :key="person.name"
+                @click="$router.push(`/payout/${person.id}?week=${selectedSaturday}`)"
+                class="border-b border-white/5 hover:bg-white/5 cursor-pointer transition-colors">
                 <td class="py-2 pr-4 font-medium">{{ person.name }}</td>
                 <td class="py-2 pr-4">{{ person.gross || '' }}</td>
                 <td class="py-2 pr-4">{{ person.cashAdvance || '' }}</td>

@@ -100,7 +100,8 @@
               </div>
               <div>
                 <h2 class="text-2xl font-bold text-white">{{ employeeName }}</h2>
-                <p class="text-green-100 font-medium">Week of {{ payout?.week_start || '—' }}</p>
+                <p class="text-green-100 font-medium">Payroll Confirmed: {{ payout?.confirmed_at ? format(new
+                  Date(payout.confirmed_at), 'MMM dd, yyyy') : '—' }}</p>
               </div>
             </div>
           </div>
@@ -749,20 +750,61 @@ onMounted(async () => {
 
     try {
       if (weekParam) {
-        // If week parameter is provided, fetch payout confirmed on that date
-        console.log('🔍 Searching for payout confirmed on:', { employeeId, weekParam })
+        // If week parameter is provided, try multiple search strategies
+        console.log('🔍 Searching for payout for week:', { employeeId, weekParam })
 
-        const { data, error } = await supabase
+        // Strategy 1: Search by week_start (most reliable)
+        let { data, error } = await supabase
           .from('payouts')
           .select('*')
           .eq('employee_id', employeeId)
-          .gte('confirmed_at', `${weekParam}T00:00:00`)
-          .lte('confirmed_at', `${weekParam}T23:59:59`)
+          .eq('week_start', weekParam)
           .order('confirmed_at', { ascending: false })
           .limit(1)
           .maybeSingle()
 
-        console.log('📋 Payout query result:', { data, error })
+        console.log('📋 Strategy 1 - Search by week_start:', { data, error })
+
+        // Strategy 2: If no result, search by confirmed_at date
+        if (!data && !error) {
+          console.log('🔍 Strategy 2 - Searching by confirmed_at date...')
+          const result2 = await supabase
+            .from('payouts')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .gte('confirmed_at', `${weekParam}T00:00:00`)
+            .lte('confirmed_at', `${weekParam}T23:59:59`)
+            .order('confirmed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          data = result2.data
+          error = result2.error
+          console.log('📋 Strategy 2 - Search by confirmed_at:', { data, error })
+        }
+
+        // Strategy 3: If still no result, search for payouts in the week range
+        if (!data && !error) {
+          console.log('🔍 Strategy 3 - Searching in week range...')
+          const weekStart = new Date(weekParam)
+          const weekEnd = new Date(weekStart)
+          weekEnd.setDate(weekEnd.getDate() + 6)
+
+          const result3 = await supabase
+            .from('payouts')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .gte('week_start', weekParam)
+            .lte('week_start', weekEnd.toISOString().split('T')[0])
+            .order('confirmed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          data = result3.data
+          error = result3.error
+          console.log('📋 Strategy 3 - Search in week range:', { data, error })
+        }
+
         payoutError = error
         payoutData = data
 
@@ -770,7 +812,7 @@ onMounted(async () => {
           console.error('❌ ERROR fetching payout for week:', error)
         }
 
-        // Also check what payouts exist for this employee around this date
+        // Also check what payouts exist for this employee (for debugging)
         const { data: allPayouts, error: allPayoutsError } = await supabase
           .from('payouts')
           .select('week_start, confirmed_at, net_total, status, allowances, deductions')
@@ -784,10 +826,11 @@ onMounted(async () => {
         }
 
       } else {
-        // Otherwise, fetch most recent confirmed payout for today (original behavior)
-        console.log('🔍 Searching for payout for today:', { employeeId, targetDate })
+        // Otherwise, fetch most recent confirmed payout (improved fallback)
+        console.log('🔍 Searching for most recent payout:', { employeeId, targetDate })
 
-        const { data, error } = await supabase
+        // Strategy 1: Look for payout confirmed today
+        let { data, error } = await supabase
           .from('payouts')
           .select('*')
           .eq('employee_id', employeeId)
@@ -797,12 +840,30 @@ onMounted(async () => {
           .limit(1)
           .maybeSingle()
 
-        console.log('📋 Today payout query result:', { data, error })
+        console.log('📋 Strategy 1 - Today confirmed payout:', { data, error })
+
+        // Strategy 2: If no payout confirmed today, get the most recent confirmed payout
+        if (!data && !error) {
+          console.log('🔍 Strategy 2 - Most recent confirmed payout...')
+          const result2 = await supabase
+            .from('payouts')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .eq('status', 'confirmed')
+            .order('confirmed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          data = result2.data
+          error = result2.error
+          console.log('📋 Strategy 2 - Most recent confirmed:', { data, error })
+        }
+
         payoutError = error
         payoutData = data
 
         if (error) {
-          console.error('❌ ERROR fetching today payout:', error)
+          console.error('❌ ERROR fetching payout:', error)
         }
       }
     } catch (fetchError) {

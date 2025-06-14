@@ -5,7 +5,7 @@
     <div v-if="userStore.user"
       class="flex flex-col h-screen bg-gradient-to-br from-gray-900 via-gray-950 to-gray-800 text-white overflow-hidden">
       <!-- Main Content -->
-      <main class="flex-1 overflow-y-auto p-6 pb-20">
+      <main class="flex-1 overflow-y-auto pb-16">
         <router-view />
       </main>
 
