@@ -363,7 +363,7 @@
               <div class="flex items-center justify-between">
                 <span class="text-green-300 font-medium text-sm">Total Stock Value</span>
                 <span class="text-green-400 font-bold text-lg">₱{{ Math.round(getTotalStockValue).toLocaleString()
-                }}</span>
+                  }}</span>
               </div>
             </div>
           </div>
@@ -411,7 +411,7 @@
                   <span class="text-white capitalize font-medium">{{ key.replace(/_/g, ' ') }}</span>
                 </div>
                 <span class="text-red-400 font-bold">-₱{{ Math.round(payout.deductions[key] || 0).toLocaleString()
-                }}</span>
+                  }}</span>
               </div>
             </div>
           </div>
@@ -497,7 +497,7 @@
                   <span class="text-white capitalize font-medium">{{ key.replace(/_/g, ' ') }}</span>
                 </div>
                 <span class="text-purple-400 font-bold">+₱{{ Math.round(payout.commissions[key] || 0).toLocaleString()
-                }}</span>
+                  }}</span>
               </div>
             </div>
           </div>

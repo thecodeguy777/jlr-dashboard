@@ -7,6 +7,7 @@ import Deliveries from '@/components/DeliveryDashboard.vue'
 import Unauthorized from '@/views/Unauthorized.vue'
 import Account from '@/views/Account.vue'
 import Login from '@/views/Login.vue'
+import ShareableReport from '@/views/ShareableReport.vue'
 
 // 👇 NEW dashboard views
 import AdminDashboard from '@/views/AdminDashboard.vue'
@@ -28,6 +29,18 @@ const routes = [
   { path: '/', component: Home },
   { path: '/account', component: Account },
   { path: '/login', component: Login },
+
+  // Public report route (no auth required)
+  {
+    path: '/report/:id',
+    name: 'ShareableReport',
+    component: ShareableReport,
+    props: route => ({
+      id: route.params.id,
+      startDate: route.query.start,
+      endDate: route.query.end
+    })
+  },
 
   // 🔐 Dashboards by role
   {
@@ -69,8 +82,7 @@ const routes = [
 
   {
     path: '/executive',
-    component: ExecutiveDashboard,
-    meta: { requiresAuth: true, roles: ['executive', 'admin'] }
+    component: ExecutiveDashboard
   },
   {
     path: '/input',
@@ -136,8 +148,8 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
-  // Skip auth check for login page and payout pages to prevent infinite loop
-  if (to.path === '/login' || to.path.startsWith('/payout/')) {
+  // Skip auth check for login page, payout pages, report pages, and executive dashboard
+  if (to.path === '/login' || to.path.startsWith('/payout/') || to.path.startsWith('/report/') || to.path === '/executive') {
     next()
     return
   }
