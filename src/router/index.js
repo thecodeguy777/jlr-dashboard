@@ -8,6 +8,7 @@ import Unauthorized from '@/views/Unauthorized.vue'
 import Account from '@/views/Account.vue'
 import Login from '@/views/Login.vue'
 import ShareableReport from '@/views/ShareableReport.vue'
+import QuickPickupLog from '@/views/QuickPickupLog.vue'
 
 // 👇 NEW dashboard views
 import AdminDashboard from '@/views/AdminDashboard.vue'
@@ -34,6 +35,13 @@ const routes = [
   { path: '/', component: Home },
   { path: '/account', component: Account },
   { path: '/login', component: Login },
+
+  // Quick Pickup Log (no auth required)
+  {
+    path: '/quick-pickup',
+    name: 'QuickPickupLog',
+    component: QuickPickupLog
+  },
 
   // Public report route (no auth required)
   {
@@ -171,7 +179,7 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
   // Skip auth check for login page, payout pages, report pages, and executive dashboard
-  if (to.path === '/login' || to.path.startsWith('/payout/') || to.path.startsWith('/report/') || to.path === '/executive') {
+  if (to.path === '/login' || to.path.startsWith('/payout/') || to.path.startsWith('/report/') || to.path === '/executive' || to.path === '/quick-pickup') {
     next()
     return
   }
