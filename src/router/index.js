@@ -25,6 +25,11 @@ import MyPayroll from '@/views/MyPayroll.vue'
 import CompanyLoans from '@/views/CompanyLoans.vue'
 import SavingsSummary from '@/views/SavingsSummary.vue'
 import CompanySavings from '@/views/CompanySavings.vue'
+import SummaryTab from '../views/SummaryTab.vue'
+import Settings from '../views/Settings.vue'
+import PayrollEditor from '@/components/PayrollEditor.vue'
+import GeneratePayrollView from '@/views/GeneratePayrollView.vue'
+
 const routes = [
   { path: '/', component: Home },
   { path: '/account', component: Account },
@@ -46,7 +51,14 @@ const routes = [
   {
     path: '/payroll',
     name: 'PayrollTabs',
-    component: () => import('@/views/PayrollTabs.vue')
+    component: () => import('@/views/PayrollTabs.vue'),
+    children: [
+      {
+        path: 'generate',
+        name: 'generate-payroll',
+        component: GeneratePayrollView
+      }
+    ]
   },
 
   {
@@ -122,8 +134,13 @@ const routes = [
   // 🔐 Shared/utility routes
   {
     path: '/summary',
-    component: Summary,
-    meta: { requiresAuth: true, roles: ['admin', 'rider'] }
+    name: 'summary',
+    component: () => import('@/views/Summary.vue')
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: Settings
   },
   {
     path: '/deliveries',
@@ -137,6 +154,11 @@ const routes = [
   {
     path: '/newsummary',
     component: NewSummary
+  },
+  {
+    path: '/payroll-editor',
+    name: 'payroll-editor',
+    component: PayrollEditor
   }
 ]
 

@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import MetricCard from '../components/MetricCard.vue'
 import ProductPieChart from '../components/ProductPieChart.vue'
 import LineChart from '../components/LineChart.vue'
 import { supabase } from '../lib/supabase'
+import { format } from 'date-fns'
 
 const level = ref('weekly')
 const deliveryDate = ref(getCurrentDate())
@@ -61,23 +62,14 @@ onMounted(async () => {
     isLoading.value = true
 
     const { data: d1 } = await supabase.from('deliveries')
-        .select('quantity, delivery_date, products(price_per_unit, category)')
+        .select('quantity, delivery_date, products(id, name, price_per_unit, category)')
 
     const { data: d2, error } = await supabase.from('subcon_deliveries')
         .select(`
-    id,
-    quantity,
-    delivery_date,
-    price_snapshot,
-    product_id,
-    subcon_id,
-    products (
-      id, name, category, subcon_price
-    ),
-    subcontractors (
-      id, name
-    )
-  `)
+            id, quantity, delivery_date, price_snapshot, product_id,
+            subcon_id, products(id, name, category, subcon_price),
+            subcontractors(id, name)
+        `)
 
     if (error) {
         console.error('❌ Supabase join error:', error.message)
@@ -147,12 +139,88 @@ const totalGross = computed(() =>
     }, 0)
 )
 
-const totalSubconGross = computed(() =>
-    filteredSubconDeliveries.value.reduce((sum, d) => {
-        const price = d.price_snapshot ?? 0
-        return sum + (d.quantity || 0) * price
-    }, 0)
-)
+const itemSummary = computed(() => {
+    const summary = {
+        inHouse: {},
+        subcon: {}
+    }
+
+    // Process in-house deliveries
+    filteredDeliveries.value.forEach(d => {
+        const productName = d.products?.name || 'Unknown Product'
+        const category = d.products?.category || 'Miscellaneous'
+        const price = d.products?.price_per_unit ?? 0
+        const quantity = d.quantity || 0
+
+        if (!summary.inHouse[category]) {
+            summary.inHouse[category] = {}
+        }
+        if (!summary.inHouse[category][productName]) {
+            summary.inHouse[category][productName] = {
+                quantity: 0,
+                value: 0
+            }
+        }
+
+        summary.inHouse[category][productName].quantity += quantity
+        summary.inHouse[category][productName].value += quantity * price
+    })
+
+    // Process subcontractor deliveries
+    filteredSubconDeliveries.value.forEach(d => {
+        const productName = d.products?.name || 'Unknown Product'
+        const category = d.products?.category || 'Miscellaneous'
+        const price = d.price_snapshot ?? d.products?.subcon_price ?? 0
+        const quantity = d.quantity || 0
+
+        if (!summary.subcon[category]) {
+            summary.subcon[category] = {}
+        }
+        if (!summary.subcon[category][productName]) {
+            summary.subcon[category][productName] = {
+                quantity: 0,
+                value: 0
+            }
+        }
+
+        summary.subcon[category][productName].quantity += quantity
+        summary.subcon[category][productName].value += quantity * price
+    })
+
+    return summary
+})
+
+const inHouseTotals = computed(() => {
+    const totals = {
+        value: 0,
+        quantity: 0
+    }
+
+    Object.values(itemSummary.value.inHouse).forEach(category => {
+        Object.values(category).forEach(product => {
+            totals.value += product.value
+            totals.quantity += product.quantity
+        })
+    })
+
+    return totals
+})
+
+const subconTotals = computed(() => {
+    const totals = {
+        value: 0,
+        quantity: 0
+    }
+
+    Object.values(itemSummary.value.subcon).forEach(category => {
+        Object.values(category).forEach(product => {
+            totals.value += product.value
+            totals.quantity += product.quantity
+        })
+    })
+
+    return totals
+})
 
 const deliverySourcePie = computed(() => {
     return {
@@ -284,14 +352,102 @@ const deliveryTrendLine = computed(() => {
 
 
                 <MetricCard title="Subcon Deliveries" :value="totalSubconDeliveries" suffix=" pcs" color="green" />
-                <MetricCard title="Gross (Subcon)" :value="Math.round(totalSubconGross)" prefix="₱" color="green" />
+                <MetricCard title="Gross (Subcon)" :value="Math.round(totalGross)" prefix="₱" color="green" />
                 <MetricCard title="Single-Walled (Subcon)" :value="subconSingle" suffix=" pcs" color="green" />
                 <MetricCard title="Double-Walled (Subcon)" :value="subconDouble" suffix=" pcs" color="green" />
 
             </div>
 
+            <!-- Date Display -->
+            <div class="bg-white/5 rounded-xl p-4 text-center border border-white/10">
+                <h2 class="text-2xl font-bold text-white">
+                    {{ new Date(deliveryDate).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    }) }}
+                </h2>
+            </div>
 
+            <!-- Item-based Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- In-house Summary Card -->
+                <div class="bg-white/5 rounded-xl p-6 border border-white/10">
+                    <h3 class="text-lg font-semibold text-white mb-4">📦 In-House Item Summary</h3>
+                    <div class="space-y-6">
+                        <div v-for="(products, category) in itemSummary.inHouse" :key="category" class="space-y-4">
+                            <h4 class="font-medium text-white/80 text-sm border-b border-white/10 pb-1">{{ category }}:
+                            </h4>
+                            <div class="space-y-4">
+                                <div v-for="(data, productName) in products" :key="productName"
+                                    class="bg-white/5 rounded-lg p-3">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-white/70">{{ productName }}</span>
+                                        <span class="text-blue-300 font-medium">{{ data.quantity }} pcs</span>
+                                    </div>
+                                    <div class="flex justify-between items-center text-sm">
+                                        <span class="text-white/60">Value:</span>
+                                        <span class="text-blue-400 font-semibold">₱{{
+                                            Math.round(data.value).toLocaleString() }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
+                    <!-- Total Values -->
+                    <div class="mt-6 pt-3 border-t border-white/10">
+                        <div class="flex justify-between items-center">
+                            <span class="text-white/70 font-medium">Total Value:</span>
+                            <span class="text-blue-400 font-bold text-lg">₱{{
+                                Math.round(inHouseTotals.value).toLocaleString() }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-sm mt-1">
+                            <span class="text-white/60">Total Quantity:</span>
+                            <span class="text-white/80">{{ inHouseTotals.quantity }} pcs</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subcontractor Summary Card -->
+                <div class="bg-white/5 rounded-xl p-6 border border-white/10">
+                    <h3 class="text-lg font-semibold text-white mb-4">🚚 Subcontractor Item Summary</h3>
+                    <div class="space-y-6">
+                        <div v-for="(products, category) in itemSummary.subcon" :key="category" class="space-y-4">
+                            <h4 class="font-medium text-white/80 text-sm border-b border-white/10 pb-1">{{ category }}:
+                            </h4>
+                            <div class="space-y-4">
+                                <div v-for="(data, productName) in products" :key="productName"
+                                    class="bg-white/5 rounded-lg p-3">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-white/70">{{ productName }}</span>
+                                        <span class="text-green-300 font-medium">{{ data.quantity }} pcs</span>
+                                    </div>
+                                    <div class="flex justify-between items-center text-sm">
+                                        <span class="text-white/60">Value:</span>
+                                        <span class="text-green-400 font-semibold">₱{{
+                                            Math.round(data.value).toLocaleString() }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Total Values -->
+                    <div class="mt-6 pt-3 border-t border-white/10">
+                        <div class="flex justify-between items-center">
+                            <span class="text-white/70 font-medium">Total Value:</span>
+                            <span class="text-green-400 font-bold text-lg">₱{{
+                                Math.round(subconTotals.value).toLocaleString() }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-sm mt-1">
+                            <span class="text-white/60">Total Quantity:</span>
+                            <span class="text-white/80">{{ subconTotals.quantity }} pcs</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <div class="rounded-2xl bg-white/5 p-6 xl:p-8">
                 <ProductPieChart :data="deliverySourcePie" />

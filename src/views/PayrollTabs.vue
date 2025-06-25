@@ -12,7 +12,20 @@
 
         <!-- Tab Content -->
         <div class="p-6">
-            <component :is="currentComponent" />
+            <Suspense>
+                <template #default>
+                    <component :is="currentComponent" />
+                </template>
+                <template #fallback>
+                    <div class="text-center py-8 text-gray-400">
+                        <div class="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent rounded-full"
+                            role="status" aria-label="loading">
+                            <span class="sr-only">Loading...</span>
+                        </div>
+                        <div class="mt-2">Loading...</div>
+                    </div>
+                </template>
+            </Suspense>
         </div>
     </div>
 </template>
@@ -25,7 +38,7 @@ const tabs = ['Generate Payroll', 'Bodega Stock']
 const activeTab = ref('Generate Payroll')
 
 // Components
-import GeneratePayrollView from '../components/GeneratePayrollView.vue'
+import GeneratePayrollView from './GeneratePayrollView.vue'
 import BodegaStockView from '../components/BodegaStockView.vue'
 
 const tabMap = {
@@ -35,3 +48,11 @@ const tabMap = {
 
 const currentComponent = computed(() => tabMap[activeTab.value])
 </script>
+
+<style scoped>
+.flex-1 {
+    min-width: fit-content;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+</style>
