@@ -1,0 +1,6 @@
+"-- Quick fix to end your active route right now"  
+""  
+"UPDATE gps_breadcrumbs SET is_active_route = false WHERE is_active_route = true;"  
+""  
+"-- Check if it worked"  
+"SELECT COUNT(*) as active_routes_remaining FROM gps_breadcrumbs WHERE is_active_route = true;" 

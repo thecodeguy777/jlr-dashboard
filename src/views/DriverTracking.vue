@@ -69,6 +69,7 @@
     <div class="flex gap-4 mb-6">
       <button 
         v-for="tab in [
+          { key: 'live', name: '🗺️ Live Map', count: stats.activeDrivers },
           { key: 'logs', name: '📋 Action Logs', count: stats.logsToday },
           { key: 'breadcrumbs', name: '📍 Breadcrumbs', count: stats.breadcrumbsToday },
           { key: 'geofences', name: '🏢 Geofence Events', count: stats.geofenceEventsToday }
@@ -86,8 +87,13 @@
       </button>
     </div>
 
+    <!-- Live Map -->
+    <div v-if="selectedTab === 'live'">
+      <LiveDriverMap />
+    </div>
+
     <!-- Data Tables -->
-    <div class="bg-white/5 rounded-xl border border-white/10">
+    <div v-else class="bg-white/5 rounded-xl border border-white/10">
       <div class="p-4 border-b border-white/10">
         <h3 class="text-lg font-semibold">
           <span v-if="selectedTab === 'logs'">📋 Recent Action Logs</span>
@@ -301,12 +307,87 @@
         </table>
       </div>
     </div>
+
+    <!-- Driver Selection for Route Viewer -->
+    <div v-if="selectedTab === 'logs'" class="mt-6 bg-white/5 rounded-xl border border-white/10 p-4">
+      <h3 class="text-lg font-semibold mb-4">🗺️ View Full Driver Routes</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div v-for="driver in uniqueDrivers" :key="driver.id" 
+          class="bg-white/10 rounded-lg p-4 hover:bg-white/20 transition">
+          <div class="flex justify-between items-start">
+            <div>
+              <h4 class="font-medium text-white">{{ driver.name }}</h4>
+              <p class="text-sm text-gray-400">{{ driver.phone }}</p>
+              <div class="text-xs text-gray-400 mt-1">
+                Last active: {{ formatDateTime(driver.lastActivity) }}
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm text-blue-400">{{ driver.todayLogs }} logs today</div>
+              <div class="text-xs text-orange-400">{{ driver.todayBreadcrumbs }} GPS points</div>
+            </div>
+          </div>
+          <div class="mt-3 flex gap-2">
+            <button @click="viewDriverRoute(driver.id, 'today')"
+              class="flex-1 bg-orange-600 hover:bg-orange-700 text-white text-xs px-3 py-2 rounded transition">
+              🗺️ Today's Route
+            </button>
+            <button @click="selectDateForDriver(driver.id)"
+              class="flex-1 bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-2 rounded transition">
+              📅 Pick Date
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Date Picker Modal -->
+    <div v-if="showDatePicker" class="fixed inset-0 bg-black/75 flex items-center justify-center z-40 p-4">
+      <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-orange-500/20">
+        <h3 class="text-lg font-semibold text-white mb-4">📅 Select Date for Route View</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm text-gray-300 mb-2">Driver</label>
+            <div class="text-white font-medium">{{ selectedDriverForDate?.name || 'Unknown Driver' }}</div>
+          </div>
+          <div>
+            <label class="block text-sm text-gray-300 mb-2">Date</label>
+            <input 
+              type="date" 
+              v-model="selectedDate"
+              :max="new Date().toISOString().split('T')[0]"
+              class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+            />
+          </div>
+          <div class="flex gap-3 pt-4">
+            <button @click="confirmDateSelection"
+              class="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition">
+              🗺️ View Route
+            </button>
+            <button @click="showDatePicker = false"
+              class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Route Viewer Modal -->
+    <RouteViewer 
+      v-if="showRouteViewer"
+      :driver-id="routeViewerDriverId"
+      :date="routeViewerDate"
+      @close="closeRouteViewer"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase'
+import RouteViewer from '../components/RouteViewer.vue'
+import LiveDriverMap from '../components/LiveDriverMap.vue'
 
 // State
 const loading = ref(false)
@@ -314,7 +395,15 @@ const deliveryLogs = ref([])
 const drivers = ref([])
 const breadcrumbs = ref([])
 const geofenceEvents = ref([])
-const selectedTab = ref('logs') // 'logs', 'breadcrumbs', 'geofences'
+const selectedTab = ref('live') // 'live', 'logs', 'breadcrumbs', 'geofences'
+
+// Route Viewer State
+const showRouteViewer = ref(false)
+const routeViewerDriverId = ref(null)
+const routeViewerDate = ref(null)
+const showDatePicker = ref(false)
+const selectedDriverForDate = ref(null)
+const selectedDate = ref(new Date().toISOString().split('T')[0])
 
 // Computed
 const stats = computed(() => {
@@ -374,6 +463,49 @@ const redFlags = computed(() => {
   return flags
 })
 
+const uniqueDrivers = computed(() => {
+  const today = new Date().toISOString().split('T')[0]
+  const driverMap = new Map()
+
+  // Process delivery logs
+  deliveryLogs.value.forEach(log => {
+    if (!log.drivers || !log.driver_id) return
+    
+    const driver = driverMap.get(log.driver_id) || {
+      id: log.driver_id,
+      name: log.drivers.name,
+      phone: log.drivers.phone,
+      lastActivity: log.timestamp,
+      todayLogs: 0,
+      todayBreadcrumbs: 0
+    }
+
+    if (log.timestamp && log.timestamp.startsWith(today)) {
+      driver.todayLogs++
+    }
+
+    if (new Date(log.timestamp) > new Date(driver.lastActivity)) {
+      driver.lastActivity = log.timestamp
+    }
+
+    driverMap.set(log.driver_id, driver)
+  })
+
+  // Process breadcrumbs
+  breadcrumbs.value.forEach(breadcrumb => {
+    if (!breadcrumb.drivers || !breadcrumb.driver_id) return
+    
+    const driver = driverMap.get(breadcrumb.driver_id)
+    if (driver && breadcrumb.timestamp && breadcrumb.timestamp.startsWith(today)) {
+      driver.todayBreadcrumbs++
+    }
+  })
+
+  return Array.from(driverMap.values()).sort((a, b) => 
+    new Date(b.lastActivity) - new Date(a.lastActivity)
+  )
+})
+
 // Methods
 const getLogWarnings = (log) => {
   const warnings = []
@@ -422,6 +554,7 @@ const getActionIcon = (actionType) => {
     start_route: '🚀',
     arrived: '📍',
     delivered: '✅',
+    end_route: '🏁',
     break_start: '☕',
     break_end: '🏃'
   }
@@ -433,6 +566,7 @@ const getActionTitle = (actionType) => {
     start_route: 'Started Route',
     arrived: 'Arrived at Drop-off',
     delivered: 'Delivered',
+    end_route: 'Ended Route',
     break_start: 'Break Started',
     break_end: 'Break Ended'
   }
@@ -580,6 +714,36 @@ const exportCsv = () => {
   a.download = `driver-logs-${new Date().toISOString().split('T')[0]}.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+// Route Viewer Methods
+const viewDriverRoute = (driverId, dateOption) => {
+  const date = dateOption === 'today' 
+    ? new Date().toISOString().split('T')[0] 
+    : dateOption
+  
+  routeViewerDriverId.value = driverId
+  routeViewerDate.value = date
+  showRouteViewer.value = true
+}
+
+const selectDateForDriver = (driverId) => {
+  const driver = uniqueDrivers.value.find(d => d.id === driverId)
+  selectedDriverForDate.value = driver
+  showDatePicker.value = true
+}
+
+const confirmDateSelection = () => {
+  if (selectedDriverForDate.value && selectedDate.value) {
+    viewDriverRoute(selectedDriverForDate.value.id, selectedDate.value)
+    showDatePicker.value = false
+  }
+}
+
+const closeRouteViewer = () => {
+  showRouteViewer.value = false
+  routeViewerDriverId.value = null
+  routeViewerDate.value = null
 }
 
 // Initialize

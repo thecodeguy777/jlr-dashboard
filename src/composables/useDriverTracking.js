@@ -404,7 +404,7 @@ export function useDriverTracking() {
       // Handle breadcrumb tracking based on action
       if (actionType === 'start_route') {
         startBreadcrumbTracking()
-      } else if (actionType === 'delivered') {
+      } else if (actionType === 'delivered' || actionType === 'end_route') {
         stopBreadcrumbTracking()
       }
 

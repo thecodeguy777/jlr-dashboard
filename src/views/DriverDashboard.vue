@@ -14,6 +14,10 @@
               class="w-full bg-orange-600 hover:bg-orange-700 py-3 rounded-lg font-semibold transition">
               Enable GPS
             </button>
+            <button @click="forceCloseModal" 
+              class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg text-sm transition">
+              Skip GPS (Testing)
+            </button>
             <button @click="logout" 
               class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded-lg text-sm transition">
               Exit App
@@ -123,6 +127,17 @@
           :loading="isLoading && currentAction === 'delivered'"
           @click="() => performAction('delivered')"
         />
+        
+        <ActionButton
+          v-if="isActiveRoute"
+          icon="🏁"
+          title="End Route"
+          subtitle="Finish route and stop GPS tracking"
+          :disabled="!canPerformActions"
+          :loading="isLoading && currentAction === 'end_route'"
+          @click="() => performAction('end_route')"
+          variant="danger"
+        />
       </div>
 
       <!-- Recent Activity -->
@@ -226,11 +241,44 @@ const canPerformActions = computed(() => {
 
 // Methods
 const requestGps = async () => {
-  const success = await requestGpsPermission()
-  if (success) {
-    showGpsModal.value = false
-    startLocationTracking()
+  console.log('🔍 Requesting GPS permission...')
+  
+  try {
+    // Add timeout to prevent hanging
+    const success = await Promise.race([
+      requestGpsPermission(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('GPS request timeout after 20 seconds')), 20000)
+      )
+    ])
+    
+    console.log('📍 GPS permission result:', success)
+    console.log('📍 isGpsAvailable:', isGpsAvailable.value)
+    console.log('📍 currentLocation:', currentLocation.value)
+    
+    if (success) {
+      console.log('✅ GPS permission granted, hiding modal')
+      showGpsModal.value = false
+      startLocationTracking()
+    } else {
+      console.log('❌ GPS permission denied')
+      alert('❌ GPS permission denied. Please enable location services in your browser settings and try again.')
+    }
+  } catch (error) {
+    console.error('GPS request error:', error)
+    
+    if (error.message.includes('timeout')) {
+      alert('❌ GPS request timed out. Please check your location settings and try the "Skip GPS" option if needed.')
+    } else {
+      alert(`❌ GPS Error: ${error.message}. Use "Skip GPS" to continue without location.`)
+    }
   }
+}
+
+const forceCloseModal = () => {
+  console.log('⚠️ Force closing GPS modal for testing')
+  showGpsModal.value = false
+  alert('⚠️ GPS disabled - Actions will be disabled until GPS is enabled')
 }
 
 const performAction = (actionType) => {
@@ -279,6 +327,7 @@ const getActionIcon = (actionType) => {
     start_route: '🚀',
     arrived: '📍',
     delivered: '✅',
+    end_route: '🏁',
     break_start: '☕',
     break_end: '🏃'
   }
@@ -290,6 +339,7 @@ const getActionTitle = (actionType) => {
     start_route: 'Started Route',
     arrived: 'Arrived at Drop-off',
     delivered: 'Delivered',
+    end_route: 'Ended Route',
     break_start: 'Break Started',
     break_end: 'Break Ended'
   }

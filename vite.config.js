@@ -31,5 +31,10 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
+  },
+  server: {
+    host: '0.0.0.0', // Allow external access
+    port: 5173,
+    https: false // Set to true when you have SSL certificates
   }
 })

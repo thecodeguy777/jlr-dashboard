@@ -121,6 +121,7 @@ const getActionTitle = (actionType) => {
     start_route: 'Start Route',
     arrived: 'Arrived at Drop-off',
     delivered: 'Delivered',
+    end_route: 'End Route',
     break_start: 'Start Break',
     break_end: 'End Break'
   }

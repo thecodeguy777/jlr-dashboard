@@ -6,6 +6,8 @@
       'flex items-center gap-4 text-left',
       disabled
         ? 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'
+        : variant === 'danger'
+        ? 'bg-red-900/20 border-red-500/30 hover:bg-red-900/30 hover:border-red-500/50 active:scale-98'
         : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-orange-500/30 active:scale-98'
     ]"
     @click="$emit('click')"
@@ -45,6 +47,11 @@ defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  variant: {
+    type: String,
+    default: 'default',
+    validator: value => ['default', 'danger'].includes(value)
   }
 })
 
