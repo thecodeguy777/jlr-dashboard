@@ -74,6 +74,7 @@ const goToHomeDashboard = () => {
     'employee_admin': '/input',
     executive: '/executive',
     employee: '/employee',
+    driver: '/driver',
   }
   router.push(routes[userStore.role] || '/login')
 }

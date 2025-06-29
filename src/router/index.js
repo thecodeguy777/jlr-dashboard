@@ -9,6 +9,7 @@ import Account from '@/views/Account.vue'
 import Login from '@/views/Login.vue'
 import ShareableReport from '@/views/ShareableReport.vue'
 import QuickPickupLog from '@/views/QuickPickupLog.vue'
+import ComponentShowcase from '@/views/ComponentShowcase.vue'
 
 // 👇 NEW dashboard views
 import AdminDashboard from '@/views/AdminDashboard.vue'
@@ -30,11 +31,20 @@ import SummaryTab from '../views/SummaryTab.vue'
 import Settings from '../views/Settings.vue'
 import PayrollEditor from '@/components/PayrollEditor.vue'
 import GeneratePayrollView from '@/views/GeneratePayrollView.vue'
+import ReturnsView from '@/views/ReturnsView.vue'
 
 const routes = [
   { path: '/', component: Home },
   { path: '/account', component: Account },
   { path: '/login', component: Login },
+
+  // Component Showcase
+  {
+    path: '/components',
+    name: 'ComponentShowcase',
+    component: ComponentShowcase,
+    meta: { requiresAuth: true, roles: ['admin'] }
+  },
 
   // Quick Pickup Log (no auth required)
   {
@@ -53,6 +63,14 @@ const routes = [
       startDate: route.query.start,
       endDate: route.query.end
     })
+  },
+
+  // Returns & Repairs
+  {
+    path: '/returns',
+    name: 'returns',
+    component: ReturnsView,
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
   },
 
   // 🔐 Dashboards by role
@@ -167,6 +185,17 @@ const routes = [
     path: '/payroll-editor',
     name: 'payroll-editor',
     component: PayrollEditor
+  },
+  // 🚚 Driver routes
+  {
+    path: '/driver',
+    component: () => import('@/views/DriverDashboard.vue'),
+    meta: { requiresAuth: true, roles: ['driver', 'admin'] }
+  },
+  {
+    path: '/driver-tracking',
+    component: () => import('@/views/DriverTracking.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
   }
 ]
 
@@ -195,6 +224,12 @@ router.beforeEach(async (to, from, next) => {
 
   // Check role-based authorization for routes that require specific roles
   if (to.meta.requiresAuth && to.meta.roles && !to.meta.roles.includes(userStore.role)) {
+    console.log('🚨 Access denied:', {
+      path: to.path,
+      userRole: userStore.role,
+      requiredRoles: to.meta.roles,
+      userEmail: userStore.user?.email
+    });
     return next('/unauthorized')
   }
 

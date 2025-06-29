@@ -377,7 +377,7 @@ onMounted(() => {
                                     <div class="flex items-center gap-2 bg-orange-600/20 rounded-full px-4 py-2">
                                         <span class="text-gray-300">Total:</span>
                                         <span class="font-bold text-orange-400">{{ totalQuantity.toLocaleString()
-                                            }}</span>
+                                        }}</span>
                                     </div>
                                 </div>
                             </div>

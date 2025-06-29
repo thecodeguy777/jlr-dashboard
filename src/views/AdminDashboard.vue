@@ -25,6 +25,10 @@
               class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow transition">
               📦 Manage Deliveries
             </router-link>
+            <router-link to="/driver-tracking"
+              class="bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow transition">
+              🚚 Driver Tracking
+            </router-link>
           </div>
         </div>
         <!-- KPI Cards -->
@@ -715,7 +719,7 @@ async function fetchKPIs() {
     const d = p.deductions || {}
     const a = p.allowances || {}
 
-    employeePayouts[p.employee_id].gross += (p.gross_income || 0) + (p.paid_by_hours || 0)
+    employeePayouts[p.employee_id].gross += (p.gross_income || 0)
     employeePayouts[p.employee_id].cashAdvance += parseFloat(d.cash_advance || 0)
     employeePayouts[p.employee_id].contributions += parseFloat(d.sss || 0)
     employeePayouts[p.employee_id].deductibles += parseFloat(d.loan || 0)

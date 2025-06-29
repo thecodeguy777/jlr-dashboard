@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps, defineEmits, ref, onMounted } from 'vue'
+import { defineProps, defineEmits, ref, onMounted, computed } from 'vue'
 import { supabase } from '../lib/supabase'
 
 const props = defineProps({
@@ -13,6 +13,27 @@ const emit = defineEmits(['submit', 'cancel-edit'])
 const products = ref([])
 const workers = ref([])
 const subcontractors = ref([])
+
+// Group products by category
+const productsByCategory = computed(() => {
+  const grouped = {
+    'Single Walled': [],
+    'Double Walled': [],
+    'Misc': [],
+    'Repaired': []
+  }
+
+  products.value.forEach(product => {
+    const category = product.category || 'Misc'
+    if (grouped[category]) {
+      grouped[category].push(product)
+    } else {
+      grouped['Misc'].push(product)
+    }
+  })
+
+  return grouped
+})
 
 const fetchOptions = async () => {
   const MAX_RETRIES = 2
@@ -80,7 +101,7 @@ function handleSubmit() {
     product_id: props.formData.product_id,
     quantity: props.formData.quantity,
     price_snapshot,
-    notes: props.formData.notes || '',
+    notes: props.formData.notes || ''
   }
 
   if (props.formData.source === 'inhouse') {
@@ -100,7 +121,6 @@ function handleSubmit() {
     })
   }
 }
-
 
 onMounted(fetchOptions)
 </script>
@@ -155,9 +175,11 @@ onMounted(fetchOptions)
             <select v-model="formData.product_id"
               class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600">
               <option value="" disabled>Select product</option>
-              <option v-for="p in products" :key="p.id" :value="p.id">
-                {{ p.name }} ({{ p.unit }})
-              </option>
+              <optgroup v-for="(products, category) in productsByCategory" :key="category" :label="category">
+                <option v-for="p in products" :key="p.id" :value="p.id">
+                  {{ p.name }} ({{ p.unit }})
+                </option>
+              </optgroup>
             </select>
           </div>
 
@@ -168,6 +190,13 @@ onMounted(fetchOptions)
               class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600" />
           </div>
 
+          <!-- Repair Status -->
+          <div class="flex items-center space-x-2">
+            <input type="checkbox" v-model="formData.is_repaired" id="is_repaired"
+              class="w-4 h-4 rounded bg-gray-700 text-blue-500 border-gray-600 focus:ring-blue-500" />
+            <label for="is_repaired" class="text-sm font-medium text-gray-300">Repaired Product</label>
+          </div>
+
           <!-- Dates -->
           <div v-if="formData.source === 'inhouse'">
             <label class="block text-sm font-medium text-gray-300">Delivery Date</label>
@@ -176,7 +205,6 @@ onMounted(fetchOptions)
           </div>
 
           <div v-else>
-
             <label class="block text-sm font-medium text-gray-300 mt-2">Delivery Date</label>
             <input type="date" v-model="formData.delivery_date"
               class="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"

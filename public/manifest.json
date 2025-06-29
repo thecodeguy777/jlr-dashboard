@@ -1,0 +1,55 @@
+{
+  "name": "RenewCo Driver Tracking",
+  "short_name": "RenewCo Drivers",
+  "description": "Driver tracking and delivery management system",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#ea580c",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/renew-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/renew-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "en",
+  "dir": "ltr",
+  "scope": "/",
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Driver Dashboard",
+      "short_name": "Driver",
+      "description": "Access driver tracking interface",
+      "url": "/driver",
+      "icons": [
+        {
+          "src": "/assets/renew-logo.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Admin Tracking",
+      "short_name": "Admin",
+      "description": "Monitor all driver activities",
+      "url": "/driver-tracking",
+      "icons": [
+        {
+          "src": "/assets/renew-logo.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ]
+} 

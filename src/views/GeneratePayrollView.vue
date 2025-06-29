@@ -12,15 +12,21 @@ const isProcessing = ref(false)
 const isLoading = ref(false)
 const error = ref(null)
 
-// Calculate week range based on selected date
+// Calculate week range based on selected date (Sunday to Saturday)
 const weekRange = computed(() => {
     const date = new Date(selectedWeek.value)
-    // Move to Saturday of that week
-    date.setDate(date.getDate() + (6 - date.getDay()))
-    date.setHours(0, 0, 0, 0)
+    
+    // Calculate Saturday of that week (week end)
     const saturday = new Date(date)
+    const dayOfWeek = saturday.getDay()
+    const daysToSaturday = (6 - dayOfWeek + 7) % 7
+    saturday.setDate(saturday.getDate() + daysToSaturday)
+    saturday.setHours(0, 0, 0, 0)
+    
+    // Calculate Sunday (week start) - 6 days before Saturday
     const sunday = new Date(saturday)
     sunday.setDate(saturday.getDate() - 6)
+    
     return {
         start: sunday.toISOString().split('T')[0],
         end: saturday.toISOString().split('T')[0]
@@ -36,24 +42,40 @@ const readyToCommit = computed(() => {
 function openPayrollEditor(worker) {
     console.log('\n=== Opening PayrollEditor ===')
     console.log('Raw worker data:', worker)
+    console.log('Worker rate fields:', {
+        inhouse_rate: worker.inhouse_rate,
+        assistant_rate: worker.assistant_rate,
+        hourly_rate: worker.hourly_rate,
+        regular_rate: worker.regular_rate
+    })
     console.log('Previous stock:', worker.previous_stock)
     console.log('Current stock:', worker.current_stock)
     console.log('Deliveries:', worker.deliveries)
+    console.log('Hours data:', {
+        regular_hours: worker.regular_hours,
+        assistant_hours: worker.assistant_hours,
+        paid_by_hours: worker.paid_by_hours,
+        rates: {
+            regular: worker.regular_rate,
+            assistant: worker.assistant_rate
+        }
+    })
 
     selectedWorker.value = {
         ...worker,
         week: worker.week_start,
         position: 'Worker',
         employee_id: worker.id,
-        regular_rate: worker.regular_rate,
+        inhouse_rate: worker.inhouse_rate || worker.hourly_rate || worker.regular_rate,  // Use the correct rate field
+        regular_rate: worker.inhouse_rate || worker.hourly_rate || worker.regular_rate,  // Also set regular_rate for backward compatibility
         assistant_rate: worker.assistant_rate,
-        regular_hours: worker.regular_hours,
-        assistant_hours: worker.assistant_hours,
-        paid_by_hours: worker.paid_by_hours,
+        regular_hours: worker.regular_hours || 0,  // Ensure we pass the hours
+        assistant_hours: worker.assistant_hours || 0,
+        paid_by_hours: worker.paid_by_hours || { inhouse: 0, assistant: 0 },  // Ensure we pass paid_by_hours
         gross: worker.gross,
-        deductions: worker.deductions,
-        allowances: worker.allowances,
-        commissions: worker.commissions,
+        deductions: worker.deductions || {},
+        allowances: worker.allowances || {},
+        commissions: worker.commissions || {},
         savings: worker.savings,
         total_savings: worker.total_savings,
         loan_balance: worker.loan_balance,
@@ -61,7 +83,12 @@ function openPayrollEditor(worker) {
         current_stock: worker.current_stock,
         deliveries: worker.deliveries
     }
-    console.log('Processed worker data:', selectedWorker.value)
+
+    // Fetch payment history when opening editor
+    fetchPaymentHistory(worker.id).then(history => {
+        selectedWorker.value.paymentHistory = history
+    })
+
     showPayrollEditor.value = true
 }
 
@@ -92,19 +119,101 @@ async function commitAll() {
         const pendingWorkers = workers.value.filter(w => !w.confirmed_at)
 
         for (const worker of pendingWorkers) {
-            // Use the same transaction for each worker
-            const { data, error: txError } = await supabase.rpc('commit_payout', {
-                p_worker_id: worker.id,
-                p_week_start: worker.week_start,
-                p_confirmed_at: now,
-                p_amount: worker.net,
-                p_loan_deduction: worker.deductions.loan || 0,
-                p_savings_amount: worker.savings || 0
-            })
+            // Update the payout record directly
+            const { error: payoutError } = await supabase
+                .from('payouts')
+                .update({
+                    confirmed_at: now,
+                    amount: worker.net,
+                    status: 'confirmed'
+                })
+                .eq('employee_id', worker.id)
+                .eq('week_start', worker.week_start)
 
-            if (txError) {
-                console.error(`Failed to commit payout for ${worker.name}:`, txError)
+            if (payoutError) {
+                console.error(`Failed to commit payout for ${worker.name}:`, payoutError)
                 throw new Error(`Failed to commit payout for ${worker.name}`)
+            }
+
+            // Update loan balance if there's a loan deduction
+            const loanDeduction = worker.deductions?.loan || 0
+            if (loanDeduction > 0) {
+                // First get the current loan balance
+                const { data: loanData, error: fetchError } = await supabase
+                    .from('loans')
+                    .select('balance')
+                    .eq('worker_id', worker.id)
+                    .eq('status', 'active')
+                    .single()
+
+                if (fetchError) {
+                    console.error(`Failed to fetch loan balance for ${worker.name}:`, fetchError)
+                } else if (loanData) {
+                    const newBalance = loanData.balance - loanDeduction
+                    const { error: loanError } = await supabase
+                        .from('loans')
+                        .update({
+                            balance: newBalance
+                        })
+                        .eq('worker_id', worker.id)
+                        .eq('status', 'active')
+
+                    if (loanError) {
+                        console.error(`Failed to update loan for ${worker.name}:`, loanError)
+                    }
+                }
+            }
+
+            // Insert/update savings if there's a savings amount
+            const savingsAmount = worker.savings || 0
+            console.log(`Processing savings for ${worker.name}:`, {
+                savingsAmount,
+                worker_id: worker.id,
+                week_start: worker.week_start
+            })
+            
+            if (savingsAmount > 0) {
+                // First try to update existing record
+                const { data: updateResult, error: updateError } = await supabase
+                    .from('savings')
+                    .update({ amount: savingsAmount })
+                    .eq('worker_id', worker.id)
+                    .eq('week_start', worker.week_start)
+                    .eq('type', 'auto')
+                    .select()
+
+                if (updateError) {
+                    console.error(`Failed to update savings for ${worker.name}:`, updateError)
+                }
+
+                // If no rows were updated, insert a new record
+                if (!updateResult || updateResult.length === 0) {
+                    const savingsData = {
+                        worker_id: worker.id,
+                        amount: savingsAmount,
+                        week_start: worker.week_start,
+                        type: 'auto',
+                        created_at: new Date().toISOString()
+                    }
+                    
+                    console.log('Inserting new savings record:', savingsData)
+                    
+                    const { data: insertResult, error: insertError } = await supabase
+                        .from('savings')
+                        .insert(savingsData)
+                        .select()
+
+                    if (insertError) {
+                        console.error(`Failed to insert savings for ${worker.name}:`, insertError)
+                        alert(`Failed to save savings for ${worker.name}: ${insertError.message}`)
+                    } else {
+                        console.log(`Successfully inserted savings for ${worker.name}:`, insertResult)
+                    }
+                } else {
+                    console.log(`Successfully updated savings for ${worker.name}:`, updateResult)
+                }
+            } else {
+                console.log(`No savings to process for ${worker.name} (amount: ${savingsAmount})`)
             }
         }
 
@@ -154,6 +263,100 @@ async function fetchTotalSavings(worker_id) {
     return data.reduce((sum, s) => sum + (s.amount || 0), 0)
 }
 
+async function fetchPaymentHistory(worker_id) {
+    console.log('\n=== Fetching Payment History ===')
+    try {
+        const { data, error } = await supabase
+            .from('payouts')
+            .select(`
+                id,
+                week_start,
+                gross_income,
+                paid_by_hours,
+                rate_snapshots,
+                deductions,
+                allowances,
+                commissions,
+                net_total,
+                confirmed_at,
+                status,
+                returns_summary
+            `)
+            .eq('employee_id', worker_id)
+            .not('confirmed_at', 'is', null)  // Only get confirmed payouts
+            .order('week_start', { ascending: false })
+            .limit(10)
+
+        if (error) throw error
+
+        console.log('Raw confirmed payouts:', data)
+
+        const processedHistory = data.map(payout => {
+            // Get rates from rate_snapshots  
+            const rates = payout.rate_snapshots || {
+                inhouse: 56.25,
+                assistant: 75.00
+            }
+
+            // Calculate hours from paid_by_hours and rates
+            let paid;
+            if (typeof payout.paid_by_hours === 'number') {
+                // Legacy format: convert number to object format
+                paid = {
+                    inhouse: payout.paid_by_hours,
+                    assistant: 0
+                };
+                console.log('Legacy paid_by_hours format:', {
+                    original: payout.paid_by_hours,
+                    converted: paid
+                })
+            } else {
+                // New JSONB format
+                paid = payout.paid_by_hours || { inhouse: 0, assistant: 0 };
+                console.log('JSONB paid_by_hours format:', paid)
+            }
+
+            const hours = {
+                inhouse: rates.inhouse ? Math.round(Number(paid.inhouse || 0) / rates.inhouse) : 0,
+                assistant: rates.assistant ? Math.round(Number(paid.assistant || 0) / rates.assistant) : 0
+            }
+
+            console.log('Calculated hours:', {
+                paid_by_hours: paid,
+                rates,
+                calculated_hours: hours
+            })
+
+            return {
+                date: payout.week_start,
+                amount: payout.net_total,
+                type: 'Regular Payroll',
+                details: {
+                    gross: payout.gross_income || 0,
+                    hours,
+                    rates,
+                    paid_by_hours: paid,
+                    deductions: (
+                        (payout.deductions?.sss || 0) +
+                        (payout.deductions?.loan || 0) +
+                        (payout.deductions?.cash_advance || 0)
+                    ),
+                    additions: (
+                        Object.values(payout.allowances || {}).reduce((sum, val) => sum + (Number(val) || 0), 0) +
+                        Object.values(payout.commissions || {}).reduce((sum, val) => sum + (Number(val) || 0), 0)
+                    )
+                }
+            }
+        })
+
+        console.log('Final processed history:', processedHistory)
+        return processedHistory
+    } catch (err) {
+        console.error('Failed to fetch payment history:', err)
+        return []
+    }
+}
+
 // Load workers and their payroll data
 async function loadData() {
     isLoading.value = true
@@ -161,16 +364,32 @@ async function loadData() {
 
     try {
         // Calculate week dates first to ensure they're available throughout the function
-        const weekStartStr = weekRange.value.start
-        const weekEndStr = weekRange.value.end
+        const weekStartStr = weekRange.value.start  // Sunday
+        const weekEndStr = weekRange.value.end       // Saturday
 
-        // Calculate next week's date (for current stock) and previous week's date (for previous stock)
-        const nextWeekDate = new Date(weekStartStr)
-        nextWeekDate.setDate(nextWeekDate.getDate() + 7)
-        const nextWeekStr = format(nextWeekDate, 'yyyy-MM-dd')
+        console.log('Week calculation:', {
+            weekStart: weekStartStr,  // Sunday
+            weekEnd: weekEndStr,      // Saturday (stock record date)
+            selectedDate: selectedWeek.value,
+            weekStartDay: new Date(weekStartStr).toLocaleDateString('en-US', { weekday: 'long' }),
+            weekEndDay: new Date(weekEndStr).toLocaleDateString('en-US', { weekday: 'long' })
+        })
 
-        // Previous week is the week_start date itself
-        const prevWeekStr = weekStartStr
+        // Stock logic: Simple approach
+        // - Current stock: Saturday of current week (what we're fetching correctly)
+        // - Previous stock: Exactly 7 days before current stock
+        const currentSaturday = weekEndStr  // This is correct: 2025-06-27
+        
+        const prevSaturday = new Date(currentSaturday)
+        prevSaturday.setDate(prevSaturday.getDate() - 6)  // 2025-06-27 - 7 = 2025-06-20
+        const prevWeekStr = format(prevSaturday, 'yyyy-MM-dd')
+
+        console.log('Stock dates:', {
+            current: currentSaturday,
+            previous: prevWeekStr,
+            currentDay: new Date(currentSaturday).toLocaleDateString('en-US', { weekday: 'long' }),
+            previousDay: new Date(prevWeekStr).toLocaleDateString('en-US', { weekday: 'long' })
+        })
 
         // 1. Get all active workers
         const { data: workersData, error: workersError } = await supabase
@@ -179,6 +398,14 @@ async function loadData() {
             .eq('is_active', true)
 
         if (workersError) throw workersError
+
+        console.log('Raw workers data from database:', workersData.map(w => ({
+            name: w.name,
+            regular_rate: w.regular_rate,
+            inhouse_rate: w.inhouse_rate,
+            assistant_rate: w.assistant_rate,
+            hourly_rate: w.hourly_rate
+        })))
 
         // 2. Get existing payouts for this week
         const { data: payoutsData, error: payoutsError } = await supabase
@@ -196,17 +423,60 @@ async function loadData() {
                 commissions,
                 net_total,
                 confirmed_at,
-                status
+                status,
+                returns_summary
             `)
             .eq('week_start', weekStartStr)
-            .is('confirmed_at', null)  // Get payouts that are NOT confirmed yet
 
         if (payoutsError) throw payoutsError
 
-        // Log the payout data to check what we're getting
-        console.log('Payout data:', payoutsData)
+        // 3. Get returns data for this week
+        const { data: returnsData, error: returnsError } = await supabase
+            .from('returns')
+            .select(`
+                id,
+                created_at,
+                worker_id,
+                repair_worker_id,
+                product_id,
+                quantity,
+                type,
+                labor_cost,
+                product:product_id (name),
+                worker:worker_id (name)
+            `)
+            .gte('created_at', weekStartStr)
+            .lte('created_at', weekEndStr)
 
-        // 3. Get products info
+        if (returnsError) throw returnsError
+
+        // Group returns by worker
+        const returnsByWorker = {}
+        returnsData.forEach(r => {
+            // As repair worker
+            if (r.repair_worker_id) {
+                if (!returnsByWorker[r.repair_worker_id]) {
+                    returnsByWorker[r.repair_worker_id] = {
+                        as_repair_worker: [],
+                        as_worker: []
+                    }
+                }
+                returnsByWorker[r.repair_worker_id].as_repair_worker.push(r)
+            }
+
+            // As worker with returns
+            if (r.worker_id) {
+                if (!returnsByWorker[r.worker_id]) {
+                    returnsByWorker[r.worker_id] = {
+                        as_repair_worker: [],
+                        as_worker: []
+                    }
+                }
+                returnsByWorker[r.worker_id].as_worker.push(r)
+            }
+        })
+
+        // 4. Get products info
         const { data: products, error: productsError } = await supabase
             .from('products')
             .select('id, name, price_per_unit, category')
@@ -219,35 +489,30 @@ async function loadData() {
             return acc
         }, {})
 
-        // 4. Get previous stock (at week_start)
+        // 5. Get previous stock (at previous Saturday)
+        console.log('Fetching previous stock for date:', prevWeekStr)
         const { data: prevStock, error: prevError } = await supabase
             .from('bodega_stock')
             .select('*, products(name, category, price_per_unit), workers(name)')
             .eq('week_start', prevWeekStr)
 
-        // If no exact match for previous week, try to find the most recent stock before week_start
-        let previousStock = prevStock
-        if (!prevStock || prevStock.length === 0) {
-            const { data: recentStock } = await supabase
-                .from('bodega_stock')
-                .select('*, products(name, category, price_per_unit), workers(name)')
-                .lt('week_start', weekStartStr)
-                .order('week_start', { ascending: false })
-                .limit(50)
+        // Use only exact week_start match for previous stock
+        const previousStock = prevStock || []
+        console.log('Found previous stock records for exact week_start:', previousStock.length)
 
-            previousStock = recentStock || []
-        }
-
-        // 5. Get current stock (at next week)
+        // 6. Get current stock (at current Saturday)
+        console.log('Fetching current stock for date:', currentSaturday)
         const { data: currentStock, error: currentStockError } = await supabase
             .from('bodega_stock')
             .select('*, products(name, category, price_per_unit), workers(name)')
-            .eq('week_start', nextWeekStr)
+            .eq('week_start', currentSaturday)
+
+        console.log('Found current stock records:', currentStock?.length || 0)
 
         if (prevError) console.error('Error fetching previous stock:', prevError)
         if (currentStockError) throw currentStockError
 
-        // 6. Get deliveries for the week
+        // 7. Get deliveries for the week
         const { data: deliveries, error: deliveriesError } = await supabase
             .from('deliveries')
             .select(`
@@ -279,128 +544,96 @@ async function loadData() {
         // Process workers data
         workers.value = await Promise.all(workersData.map(async (worker) => {
             const existingPayout = payoutsData?.find(p => p.employee_id === worker.id)
-            console.log('\n=== Processing Worker Data ===')
-            console.log('Worker:', worker.name)
-            console.log('Existing payout:', existingPayout)
+            const workerReturns = returnsByWorker[worker.id] || { as_repair_worker: [], as_worker: [] }
+
+            // Calculate returns summary if not in existing payout
+            let returnsSummary = existingPayout?.returns_summary
+            if (!returnsSummary) {
+                returnsSummary = {
+                    as_repair_worker: workerReturns.as_repair_worker.map(r => ({
+                        id: r.id,
+                        type: r.type,
+                        quantity: r.quantity,
+                        labor_cost: r.labor_cost,
+                        product_name: r.product?.name || `Product ${r.product_id}`,
+                        worker_name: r.worker?.name || 'Unknown Worker'
+                    })),
+                    as_worker: workerReturns.as_worker.map(r => ({
+                        id: r.id,
+                        type: r.type,
+                        quantity: r.quantity,
+                        product_name: r.product?.name || `Product ${r.product_id}`
+                    })),
+                    totals: {
+                        labor_earnings: workerReturns.as_repair_worker.reduce((sum, r) => sum + (Number(r.labor_cost) || 0), 0),
+                        repaired_quantity: workerReturns.as_repair_worker.filter(r => r.type === 'repair').reduce((sum, r) => sum + (Number(r.quantity) || 0), 0),
+                        transformed_quantity: workerReturns.as_repair_worker.filter(r => r.type === 'transform').reduce((sum, r) => sum + (Number(r.quantity) || 0), 0),
+                        returned_quantity: workerReturns.as_worker.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0)
+                    }
+                }
+            }
 
             // Initialize variables
             let regularHours = 0
             let assistantHours = 0
-            let regularRate = 56.25
-            let assistantRate = 75.00
-            let paidByHours = { regular: 0, assistant: 0 }
-            let deductions = {
-                sss: 0,  // Default to 0 instead of 245
-                loan: 0,
-                cash_advance: 0
-            }
-            let allowances = {
-                transport: 0,
-                meal: 0,
-                general: 0
-            }
-            let commissions = {
-                bonus: 0,
-                overtime: 0,
-                holiday: 0
-            }
+            let regularRate = worker.inhouse_rate || worker.hourly_rate || worker.regular_rate || 56.25
+            let assistantRate = worker.assistant_rate || 75.00
+            let paidByHours = { inhouse: 0, assistant: 0 }
 
             if (existingPayout) {
-                // Handle rate snapshots (default to standard rates if not present)
-                regularRate = existingPayout.rate_snapshots?.regular || 56.25
-                assistantRate = existingPayout.rate_snapshots?.assistant || 75.00
+                // Always use current worker rates, not old snapshots
+                console.log(`Rate calculation for ${worker.name}:`, {
+                    worker_regular_rate: worker.regular_rate,
+                    existing_snapshot_inhouse: existingPayout.rate_snapshots?.inhouse,
+                    final_regular_rate: worker.regular_rate || existingPayout.rate_snapshots?.inhouse || 56.25
+                })
+                regularRate = worker.inhouse_rate || worker.hourly_rate || worker.regular_rate || existingPayout.rate_snapshots?.inhouse || 56.25
+                assistantRate = worker.assistant_rate || existingPayout.rate_snapshots?.assistant || 75.00
 
                 // Handle paid_by_hours (could be a number or an object)
                 if (existingPayout.paid_by_hours) {
+                    console.log('Processing paid_by_hours for worker:', {
+                        worker: worker.name,
+                        paid_by_hours: existingPayout.paid_by_hours,
+                        type: typeof existingPayout.paid_by_hours
+                    })
+
                     if (typeof existingPayout.paid_by_hours === 'number') {
-                        // If it's a single number, assume it's regular hours
+                        // Legacy format: all hours are inhouse hours
                         paidByHours = {
-                            regular: existingPayout.paid_by_hours,
+                            inhouse: Number(existingPayout.paid_by_hours),
                             assistant: 0
                         }
-                        regularHours = Number(paidByHours.regular) / Number(regularRate)
+                        regularHours = Math.round(paidByHours.inhouse / regularRate)
                         assistantHours = 0
-                    } else if (typeof existingPayout.paid_by_hours === 'object') {
+
+                        console.log('Processed legacy format:', {
+                            paid_by_hours: paidByHours,
+                            hours: { regularHours, assistantHours }
+                        })
+                    } else {
+                        // New JSONB format
                         paidByHours = {
-                            regular: Number(existingPayout.paid_by_hours.regular || 0),
+                            inhouse: Number(existingPayout.paid_by_hours.inhouse || 0),
                             assistant: Number(existingPayout.paid_by_hours.assistant || 0)
                         }
-                        regularHours = paidByHours.regular / regularRate
-                        assistantHours = paidByHours.assistant / assistantRate
+                        regularHours = Math.round(paidByHours.inhouse / regularRate)
+                        assistantHours = Math.round(paidByHours.assistant / assistantRate)
+
+                        console.log('Processed JSONB format:', {
+                            paid_by_hours: paidByHours,
+                            hours: { regularHours, assistantHours }
+                        })
                     }
                 }
-
-                // Clean up deductions (handle empty strings and respect past SSS value)
-                deductions = {
-                    // For SSS: if it was 245 before, keep it 245, otherwise use 0
-                    sss: existingPayout.deductions?.sss === 245 ? 245 : 0,
-                    loan: Number(existingPayout.deductions?.loan || 0),
-                    cash_advance: Number(existingPayout.deductions?.cash_advance || 0)
-                }
-
-                // Clean up allowances
-                allowances = {
-                    transport: Number(existingPayout.allowances?.transport || 0),
-                    meal: Number(existingPayout.allowances?.meal || 0),
-                    general: Number(existingPayout.allowances?.general || 0)
-                }
-
-                // Clean up commissions
-                commissions = {
-                    bonus: Number(existingPayout.commissions?.bonus || 0),
-                    overtime: Number(existingPayout.commissions?.overtime || 0),
-                    holiday: Number(existingPayout.commissions?.holiday || 0)
-                }
-
-                console.log('Processed payout data:', {
-                    hours: { regularHours, assistantHours },
-                    rates: { regularRate, assistantRate },
-                    paidByHours,
-                    deductions,
-                    allowances,
-                    commissions
-                })
-            } else {
-                // For new payouts, use worker's hourly rate
-                regularRate = worker.regular_rate || 56.25
-                assistantRate = worker.assistant_rate || 75.00
-                regularHours = worker.regular_hours || 0
-                assistantHours = worker.assistant_hours || 0
-
-                // Calculate paid_by_hours
-                paidByHours = {
-                    regular: regularHours * regularRate,
-                    assistant: assistantHours * assistantRate
-                }
-
-                console.log('Calculated from worker rates:', {
-                    regularHours,
-                    assistantHours,
-                    regularRate,
-                    assistantRate,
-                    paidByHours
-                })
             }
 
             // Calculate total hours pay
             const hoursPay = (regularHours * regularRate) + (assistantHours * assistantRate)
-            console.log('Final hours calculation:', {
-                regularHours,
-                assistantHours,
-                regularRate,
-                assistantRate,
-                paidByHours,
-                hoursPay
-            })
 
             // Group current stock by category
             const workerCurrStock = (currentStock || []).filter(s => s.worker_id === worker.id)
             const workerPrevStock = (previousStock || []).filter(s => s.worker_id === worker.id)
-
-            console.log('Stock data:', {
-                current: workerCurrStock,
-                previous: workerPrevStock
-            })
 
             // Group previous stock by category
             const prevCategoryMap = {}
@@ -434,11 +667,6 @@ async function loadData() {
                 }
                 currCategoryMap[category][name].quantity += (item.quantity || 0)
                 currCategoryMap[category][name].value += (item.quantity || 0) * (item.price_snapshot || item.products?.price_per_unit || 0)
-            })
-
-            console.log('Processed stock maps:', {
-                previous: prevCategoryMap,
-                current: currCategoryMap
             })
 
             // Calculate stock differences and gross from stock
@@ -498,16 +726,16 @@ async function loadData() {
             const loanBalance = loanInfo?.balance || 0
 
             // Calculate totals
-            const totalDeductions = Object.values(deductions).reduce((a, b) => a + (b || 0), 0)
-            const totalAllowances = Object.values(allowances).reduce((a, b) => a + (b || 0), 0)
-            const totalCommissions = Object.values(commissions).reduce((a, b) => a + (b || 0), 0)
+            const totalDeductions = Object.values(existingPayout?.deductions || {}).reduce((a, b) => a + (b || 0), 0)
+            const totalAllowances = Object.values(existingPayout?.allowances || {}).reduce((a, b) => a + (b || 0), 0)
+            const totalCommissions = Object.values(existingPayout?.commissions || {}).reduce((a, b) => a + (b || 0), 0)
 
             const workerData = {
                 id: worker.id,
                 name: worker.name,
                 avatar: worker.name.substring(0, 2).toUpperCase(),
                 week_start: weekStartStr,
-                week_end: weekEndStr,
+                confirmed_at: existingPayout?.confirmed_at || null,
                 gross: existingPayout?.gross_income || grossFromStock,
                 regular_hours: regularHours,
                 assistant_hours: assistantHours,
@@ -515,20 +743,31 @@ async function loadData() {
                 assistant_rate: assistantRate,
                 paid_by_hours: paidByHours,
                 rate_snapshots: existingPayout?.rate_snapshots || {
-                    regular: regularRate,
+                    inhouse: regularRate,
                     assistant: assistantRate
                 },
                 total_hours: regularHours + assistantHours,
                 hours_pay: hoursPay,
-                deductions,
-                allowances,
-                commissions,
+                deductions: existingPayout?.deductions || {},
+                allowances: existingPayout?.allowances || {},
+                commissions: {
+                    ...(existingPayout?.commissions || {}),
+                    labor: returnsSummary.totals.labor_earnings || 0
+                },
                 savings,
                 total_savings: totalSavings,
                 loan_balance: loanBalance,
                 total_deductions: totalDeductions + savings,
-                total_additions: totalAllowances + totalCommissions,
-                net: existingPayout?.net_total || (grossFromStock + hoursPay + totalAllowances + totalCommissions - totalDeductions - savings),
+                total_additions: totalAllowances + totalCommissions + (returnsSummary.totals.labor_earnings || 0),
+                net: existingPayout?.net_total || (
+                    grossFromStock +
+                    hoursPay +
+                    totalAllowances +
+                    totalCommissions +
+                    (returnsSummary.totals.labor_earnings || 0) -
+                    totalDeductions -
+                    savings
+                ),
                 status: existingPayout ? 'exists' : 'pending',
                 payout_id: existingPayout?.id,
                 previous_stock: prevCategoryMap,
@@ -548,22 +787,24 @@ async function loadData() {
                     acc[category][name].quantity += (d.quantity || 0)
                     acc[category][name].value += (d.quantity || 0) * (d.price_snapshot || d.products?.price_per_unit || 0)
                     return acc
-                }, {})
+                }, {}),
+                returns_summary: returnsSummary
             }
 
-            console.log('Final worker data:', {
-                name: workerData.name,
+            console.log('Prepared worker data:', {
+                worker: worker.name,
                 hours: {
                     regular: workerData.regular_hours,
-                    assistant: workerData.assistant_hours,
-                    total: workerData.total_hours
+                    assistant: workerData.assistant_hours
                 },
+                paid_by_hours: workerData.paid_by_hours,
                 rates: {
                     regular: workerData.regular_rate,
                     assistant: workerData.assistant_rate
                 },
-                paid_by_hours: workerData.paid_by_hours,
-                hours_pay: workerData.hours_pay
+                deductions: workerData.deductions,
+                existingPayout: !!existingPayout,
+                savings_in_deductions: existingPayout?.deductions?.savings
             })
 
             return workerData
@@ -591,17 +832,86 @@ async function commitWorker(worker) {
     try {
         const now = new Date().toISOString()
 
-        // Start a Supabase transaction
-        const { data, error: txError } = await supabase.rpc('commit_payout', {
-            p_worker_id: worker.id,
-            p_week_start: worker.week_start,
-            p_confirmed_at: now,
-            p_amount: worker.net,
-            p_loan_deduction: worker.deductions.loan || 0,
-            p_savings_amount: worker.savings || 0
-        })
+        // Update the payout record directly
+        const { error: payoutError } = await supabase
+            .from('payouts')
+            .update({
+                confirmed_at: now,
+                amount: worker.net,
+                status: 'confirmed'
+            })
+            .eq('employee_id', worker.id)
+            .eq('week_start', worker.week_start)
 
-        if (txError) throw txError
+        if (payoutError) throw payoutError
+
+        // Update loan balance if there's a loan deduction
+        const loanDeduction = worker.deductions?.loan || 0
+        if (loanDeduction > 0) {
+            // First get the current loan balance
+            const { data: loanData, error: fetchError } = await supabase
+                .from('loans')
+                .select('balance')
+                .eq('worker_id', worker.id)
+                .eq('status', 'active')
+                .single()
+
+            if (fetchError) {
+                console.error(`Failed to fetch loan balance for ${worker.name}:`, fetchError)
+            } else if (loanData) {
+                const newBalance = loanData.balance - loanDeduction
+                const { error: loanError } = await supabase
+                    .from('loans')
+                    .update({
+                        balance: newBalance
+                    })
+                    .eq('worker_id', worker.id)
+                    .eq('status', 'active')
+
+                if (loanError) {
+                    console.error(`Failed to update loan for ${worker.name}:`, loanError)
+                }
+            }
+        }
+
+        // Handle savings - insert/update savings table (from deductions field)
+        const savingsAmount = worker.deductions?.savings || 0
+        if (savingsAmount > 0) {
+            // Check if savings record already exists
+            const { data: existingSavings } = await supabase
+                .from('savings')
+                .select('id')
+                .eq('worker_id', worker.id)
+                .eq('week_start', worker.week_start)
+                .eq('type', 'auto')
+                .single()
+
+            if (existingSavings) {
+                // Update existing savings record
+                const { error: savingsUpdateError } = await supabase
+                    .from('savings')
+                    .update({ amount: savingsAmount })
+                    .eq('id', existingSavings.id)
+
+                if (savingsUpdateError) {
+                    console.error(`Failed to update savings for ${worker.name}:`, savingsUpdateError)
+                }
+            } else {
+                // Insert new savings record
+                const { error: savingsInsertError } = await supabase
+                    .from('savings')
+                    .insert({
+                        worker_id: worker.id,
+                        amount: savingsAmount,
+                        week_start: worker.week_start,
+                        type: 'auto'
+                    })
+
+                if (savingsInsertError) {
+                    console.error(`Failed to insert savings for ${worker.name}:`, savingsInsertError)
+                }
+            }
+        }
 
         // Reload data after committing
         await loadData()
@@ -704,7 +1014,7 @@ async function commitWorker(worker) {
                                     <div :class="[
                                         'absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-gray-800',
                                         worker.confirmed_at ? 'bg-green-500' : 'bg-yellow-500'
-                                    ]"></div>
+                                    ]" :title="worker.confirmed_at ? 'Committed' : 'Pending'"></div>
                                 </div>
                                 <div>
                                     <h3 class="text-lg font-semibold text-white">{{ worker.name }}</h3>
@@ -801,6 +1111,40 @@ async function commitWorker(worker) {
                             </div>
                         </div>
 
+                        <!-- Returns Summary -->
+                        <div v-if="worker.returns_summary?.totals" class="bg-gray-700/50 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-sm font-medium text-gray-400">Returns & Labor</h4>
+                                <span v-if="worker.returns_summary.totals.labor_earnings > 0"
+                                    class="text-green-400 font-bold">
+                                    +₱{{ worker.returns_summary.totals.labor_earnings.toLocaleString() }}
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-3 text-center">
+                                <div v-if="worker.returns_summary.totals.repaired_quantity > 0"
+                                    class="bg-gray-700/30 rounded-lg p-2">
+                                    <div class="text-xs text-gray-400">Repaired</div>
+                                    <div class="text-sm font-medium text-blue-400">{{
+                                        worker.returns_summary.totals.repaired_quantity }} pcs
+                                    </div>
+                                </div>
+                                <div v-if="worker.returns_summary.totals.transformed_quantity > 0"
+                                    class="bg-gray-700/30 rounded-lg p-2">
+                                    <div class="text-xs text-gray-400">Transformed</div>
+                                    <div class="text-sm font-medium text-purple-400">{{
+                                        worker.returns_summary.totals.transformed_quantity }}
+                                        pcs</div>
+                                </div>
+                                <div v-if="worker.returns_summary.totals.returned_quantity > 0"
+                                    class="bg-gray-700/30 rounded-lg p-2">
+                                    <div class="text-xs text-gray-400">Returned</div>
+                                    <div class="text-sm font-medium text-red-400">{{
+                                        worker.returns_summary.totals.returned_quantity }} pcs
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Deductions -->
                         <div class="bg-gray-700/50 rounded-lg p-4">
                             <div class="flex items-center justify-between mb-3">
@@ -809,20 +1153,54 @@ async function commitWorker(worker) {
                                 }}</span>
                             </div>
                             <div class="space-y-2">
+                                <!-- Show all deduction types -->
+                                <div v-if="worker.deductions?.sss > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">SSS</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.sss.toLocaleString() }}</span>
+                                </div>
+                                <div v-if="worker.deductions?.philhealth > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">PhilHealth</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.philhealth.toLocaleString() }}</span>
+                                </div>
+                                <div v-if="worker.deductions?.pagibig > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">Pag-IBIG</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.pagibig.toLocaleString() }}</span>
+                                </div>
+                                <div v-if="worker.deductions?.loan > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">Loan</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.loan.toLocaleString() }}</span>
+                                </div>
+                                <div v-if="worker.deductions?.cash_advance > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">Cash Advance</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.cash_advance.toLocaleString() }}</span>
+                                </div>
+                                <div v-if="worker.deductions?.uniform > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">Uniform</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.uniform.toLocaleString() }}</span>
+                                </div>
+                                <div v-if="worker.deductions?.tools > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">Tools</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.tools.toLocaleString() }}</span>
+                                </div>
+                                <div v-if="worker.deductions?.others > 0" class="flex justify-between text-sm">
+                                    <span class="text-gray-400">Others</span>
+                                    <span class="text-red-400">₱{{ worker.deductions.others.toLocaleString() }}</span>
+                                </div>
+                                <!-- Show savings deduction from payouts table or fallback to separate savings field -->
+                                <div v-if="(worker.deductions?.savings > 0) || (worker.savings > 0)" class="flex justify-between text-sm">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-gray-400">Savings</span>
+                                        <span v-if="worker.total_savings > 0" class="text-xs text-green-400">(₱{{ worker.total_savings.toLocaleString() }})</span>
+                                    </div>
+                                    <span class="text-red-400">₱{{ (worker.deductions?.savings || worker.savings || 0).toLocaleString() }}</span>
+                                </div>
+                                <!-- Any other deductions not explicitly listed -->
                                 <template v-for="(value, key) in worker.deductions" :key="key">
-                                    <div v-if="value > 0" class="flex justify-between text-sm">
-                                        <span class="text-gray-400">{{ key === 'sss' ? 'SSS' : key }}</span>
+                                    <div v-if="value > 0 && !['sss', 'philhealth', 'pagibig', 'loan', 'cash_advance', 'uniform', 'tools', 'others', 'savings'].includes(key)" class="flex justify-between text-sm">
+                                        <span class="text-gray-400">{{ key.charAt(0).toUpperCase() + key.slice(1).replace('_', ' ') }}</span>
                                         <span class="text-red-400">₱{{ value.toLocaleString() }}</span>
                                     </div>
                                 </template>
-                                <div v-if="worker.savings > 0" class="flex justify-between text-sm">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-gray-400">Savings</span>
-                                        <span class="text-xs text-green-400">(₱{{ worker.total_savings.toLocaleString()
-                                        }})</span>
-                                    </div>
-                                    <span class="text-red-400">₱{{ worker.savings.toLocaleString() }}</span>
-                                </div>
                             </div>
                         </div>
 
@@ -854,6 +1232,13 @@ async function commitWorker(worker) {
                                     d="M5 13l4 4L19 7" />
                             </svg>
                         </button>
+                        <div v-else class="flex items-center gap-2 px-4 py-2 text-sm text-gray-500">
+                            <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span>Committed</span>
+                        </div>
                         <button @click="openPayrollEditor(worker)"
                             class="flex items-center gap-2 px-4 py-2 text-sm text-blue-400 hover:text-white transition-colors duration-200">
                             <span>Edit Details</span>

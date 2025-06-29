@@ -9,6 +9,7 @@ const { deliveries } = defineProps({
   }
 })
 const emit = defineEmits(['edit', 'delete'])
+
 const categoryTotals = computed(() => {
   return deliveries.reduce(
     (totals, item) => {
@@ -16,21 +17,30 @@ const categoryTotals = computed(() => {
       const qty = item.quantity || 0
       if (category === 'Single Walled') totals.single += qty
       if (category === 'Double Walled') totals.double += qty
+      if (category === 'Misc') totals.misc += qty
       return totals
     },
-    { single: 0, double: 0 }
+    { single: 0, double: 0, misc: 0 }
   )
 })
 
-
+const formatCategory = (category) => {
+  switch (category) {
+    case 'Single Walled': return 'Single'
+    case 'Double Walled': return 'Double'
+    case 'Misc': return 'Misc'
+    default: return category
+  }
+}
 </script>
 
 <template>
   <div>
-    <div v-if="Array.isArray(deliveries)" class="text-lg text-slate-50 italic mb-2">
-      Single: {{ categoryTotals.single }} pcs, Double: {{ categoryTotals.double }} pcs
+    <div v-if="Array.isArray(deliveries)" class="text-lg text-slate-50 italic mb-2 flex flex-wrap gap-4">
+      <span>Single: {{ categoryTotals.single }} pcs</span>
+      <span>Double: {{ categoryTotals.double }} pcs</span>
+      <span>Misc: {{ categoryTotals.misc }} pcs</span>
     </div>
-
 
     <!-- Desktop Table -->
     <table class="w-full text-sm text-left text-white/90 hidden md:table">
@@ -38,6 +48,7 @@ const categoryTotals = computed(() => {
         <tr>
           <th class="px-4 py-2">Worker</th>
           <th class="px-4 py-2">Product</th>
+          <th class="px-4 py-2">Category</th>
           <th class="px-4 py-2 text-right">Qty</th>
           <th class="px-4 py-2">Notes</th>
           <th class="px-4 py-2 text-right">Actions</th>
@@ -47,6 +58,7 @@ const categoryTotals = computed(() => {
         <tr v-for="item in deliveries" :key="item.id" class="border-b border-white/10 hover:bg-white/5">
           <td class="px-4 py-2">{{ item.workers?.name || '—' }}</td>
           <td class="px-4 py-2">{{ item.products?.name || '—' }}</td>
+          <td class="px-4 py-2">{{ formatCategory(item.products?.category) || '—' }}</td>
           <td class="px-4 py-2 text-right">{{ item.quantity }}</td>
           <td class="px-4 py-2 italic text-white/70">{{ item.notes || '—' }}</td>
           <td class="px-4 py-2 text-right space-x-2">
@@ -70,6 +82,10 @@ const categoryTotals = computed(() => {
           <span>{{ item.products?.name || '—' }}</span>
         </div>
         <div class="flex justify-between mb-1">
+          <span class="font-semibold">Category:</span>
+          <span>{{ formatCategory(item.products?.category) || '—' }}</span>
+        </div>
+        <div class="flex justify-between mb-1">
           <span class="font-semibold">Qty:</span>
           <span>{{ item.quantity }}</span>
         </div>
@@ -89,7 +105,6 @@ const categoryTotals = computed(() => {
     </div>
   </div>
 </template>
-
 
 <style scoped>
 th,

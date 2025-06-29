@@ -1,5 +1,5 @@
 <template>
-  <div
+  E<div
     class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-950 to-gray-800 text-white p-3 md:p-6 space-y-4 md:space-y-8">
     <!-- Enhanced Header -->
     <div class="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 md:gap-4">
@@ -760,7 +760,7 @@ const router = useRouter()
 onMounted(fetchData)
 
 const level = ref('weekly')
-const deliveryDate = ref('2025-06-14') // Set to June 14
+const deliveryDate = ref(new Date().toISOString().split('T')[0]) // Set to current date
 const isLoading = ref(true)
 
 // Data
@@ -835,9 +835,8 @@ async function fetchData() {
           name
         )
       `)
-      .gte('week_start', start)
-      .lte('week_start', end)
-      .not('confirmed_at', 'is', null)
+      .gte('confirmed_at', start)
+      .lte('confirmed_at', end)
 
     if (payoutBreakdownError) {
       console.error('Error fetching payouts:', payoutBreakdownError)
@@ -865,6 +864,7 @@ async function fetchData() {
 
         employeePayouts[p.employee_id].gross += (p.gross_income || 0) + (p.paid_by_hours || 0)
         employeePayouts[p.employee_id].cashAdvance += parseFloat(d.cash_advance || 0)
+        employeePayouts[p.employee_id].savings += parseFloat(d.savings || 0)
         employeePayouts[p.employee_id].contributions += parseFloat(d.sss || 0)
         employeePayouts[p.employee_id].deductibles += parseFloat(d.loan || 0)
         employeePayouts[p.employee_id].allowance += Object.values(a).reduce((sum, val) => {
@@ -878,15 +878,22 @@ async function fetchData() {
       payoutBreakdown.value = Object.values(employeePayouts).map(p => ({
         id: p.employee_id,
         name: p.name,
-        gross: p.gross.toFixed(2),
-        cashAdvance: p.cashAdvance ? p.cashAdvance.toFixed(2) : '',
-        savings: p.savings ? p.savings.toFixed(2) : '',
-        contributions: p.contributions ? p.contributions.toFixed(2) : '',
-        deductibles: p.deductibles ? p.deductibles.toFixed(2) : '',
-        allowance: p.allowance ? p.allowance.toFixed(2) : '',
-        refund: p.refund ? p.refund.toFixed(2) : '',
-        total: p.total ? p.total.toFixed(2) : ''
+        gross: parseFloat(p.gross).toFixed(2),
+        cashAdvance: p.cashAdvance ? parseFloat(p.cashAdvance).toFixed(2) : '',
+        savings: p.savings ? parseFloat(p.savings).toFixed(2) : '',
+        contributions: p.contributions ? parseFloat(p.contributions).toFixed(2) : '',
+        deductibles: p.deductibles ? parseFloat(p.deductibles).toFixed(2) : '',
+        allowance: p.allowance ? parseFloat(p.allowance).toFixed(2) : '',
+        refund: p.refund ? parseFloat(p.refund).toFixed(2) : '',
+        total: p.total ? parseFloat(p.total).toFixed(2) : ''
       }))
+
+      console.log('Payroll Data:', {
+        start,
+        end,
+        payouts: payoutsThisWeek,
+        breakdown: payoutBreakdown.value
+      })
     }
 
     // Fetch cash tracker data (expenses and comparisons)
@@ -976,33 +983,60 @@ async function fetchData() {
     if (!prevInHouseError) previousPeriodDeliveries.value = prevInHouseData || []
     if (!prevSubconError) previousPeriodSubconDeliveries.value = prevSubconData || []
 
-    // Fetch payroll data (only confirmed payouts for the specific period)
+    // Fetch payroll data (only confirmed payouts)
     const { data: payouts, error: payoutError } = await supabase
       .from('payouts')
-      .select('net_total')
-      .gte('week_start', start)
-      .lte('week_start', end)
-      .not('confirmed_at', 'is', null)
+      .select('net_total, gross_income, paid_by_hours')
+      .gte('confirmed_at', start)
+      .lte('confirmed_at', end)
 
     if (!payoutError && payouts) {
       actualPayrollTotal.value = payouts.reduce((sum, p) => sum + (p.net_total || 0), 0)
+      payoutBreakdown.value = payouts.map(p => {
+        const grossIncome = p.gross_income || 0
+        const paidByHours = p.paid_by_hours || {}
+        const inhouseHours = parseFloat(paidByHours.inhouse || 0)
+        const assistantHours = parseFloat(paidByHours.assistant || 0)
+        return {
+          ...p,
+          gross: grossIncome + inhouseHours + assistantHours
+        }
+      })
     }
 
-    // Fetch current bodega stock data (use selected date as week_start)
-    const currentWeekStart = deliveryDate.value
+    // Fetch current bodega stock data (week 0, starts June 28)
+    const today = new Date(deliveryDate.value)
+    today.setHours(0, 0, 0, 0)
+    const saturday = calculateSaturday(today)
+    const nextSaturday = new Date(saturday)
+    nextSaturday.setDate(saturday.getDate() + 7)
+    const nextWeekStart = calculateStartOfWeek(nextSaturday)
+    const currentWeekStart = formatDateForDB(nextWeekStart)
+
+    console.log('Current Stock Query:', {
+      weekStart: currentWeekStart,
+      selectedDate: deliveryDate.value
+    })
+
+    // Temporarily hardcode to June 27, 2025
+    const june27WeekStart = '2025-06-27' // June 27, 2025
     const { data: currentStockData, error: currentStockError } = await supabase
       .from('bodega_stock')
       .select('*, products(name, category, price_per_unit), workers(name)')
-      .eq('week_start', currentWeekStart)
+      .eq('week_start', june27WeekStart)
 
     if (!currentStockError && currentStockData) {
       currentBodegaStock.value = currentStockData
     }
 
-    // Fetch previous bodega stock data (week_start - 7 days)
-    const previousWeekStart = new Date(deliveryDate.value)
-    previousWeekStart.setDate(previousWeekStart.getDate() - 7)
-    const prevWeekStartStr = previousWeekStart.toISOString().split('T')[0]
+    // Fetch previous bodega stock data (week -1, starts June 21)
+    const startOfWeek = calculateStartOfWeek(saturday)
+    const prevWeekStartStr = formatDateForDB(startOfWeek)
+
+    console.log('Previous Stock Query:', {
+      weekStart: prevWeekStartStr,
+      selectedDate: deliveryDate.value
+    })
 
     const { data: prevStockData, error: prevStockError } = await supabase
       .from('bodega_stock')
@@ -1023,10 +1057,10 @@ async function fetchData() {
 // Watch for changes in date or level and refetch data
 watch([deliveryDate, level], fetchData)
 
-// Helper function to get date range based on current filter (same as AdminDashboard)
+// Helper function to get date range based on current filter (matching AdminDashboard exactly)
 function getDateRange() {
   if (level.value === 'weekly') {
-    // Use AdminDashboard's Saturday-based week system
+    // Use EXACT same logic as AdminDashboard
     const today = new Date(deliveryDate.value)
     today.setHours(0, 0, 0, 0)
 
@@ -1043,9 +1077,11 @@ function getDateRange() {
       end: monthEnd.value.toISOString().split('T')[0]
     }
   } else {
+    const nextDay = new Date(deliveryDate.value)
+    nextDay.setDate(nextDay.getDate() + 1)
     return {
       start: deliveryDate.value,
-      end: deliveryDate.value
+      end: formatDateForDB(nextDay)
     }
   }
 }
@@ -1363,18 +1399,28 @@ async function fetchCashTrackerData(start, end, lastStart, lastEnd) {
       return
     }
 
-    // Filter current week expenses
+    // Filter current week expenses and scrap topups
     const expenses = transactions?.filter(t => t.type === 'expense') || []
+    const scrapTopups = transactions?.filter(t => t.type === 'topup' && t.category === 'Scrap') || []
+    
     weeklyExpenses.value = expenses
+    weeklyScrapRevenue.value = scrapTopups.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
     totalWeeklyExpenses.value = expenses.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
 
-    // Filter last week expenses
+    // Filter last week expenses and scrap topups
     const lastExpenses = lastWeekTransactions?.filter(t => t.type === 'expense') || []
+    const lastScrapTopups = lastWeekTransactions?.filter(t => t.type === 'topup' && t.category === 'Scrap') || []
+    
     lastWeekExpenses.value = lastExpenses.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+    lastWeekScrapRevenue.value = lastScrapTopups.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
 
-    // Calculate percentage change
+    // Calculate percentage changes
     if (lastWeekExpenses.value > 0) {
       expensesPercentChange.value = Math.round(((totalWeeklyExpenses.value - lastWeekExpenses.value) / lastWeekExpenses.value) * 100)
+    }
+
+    if (lastWeekScrapRevenue.value > 0) {
+      scrapPercentChange.value = Math.round(((weeklyScrapRevenue.value - lastWeekScrapRevenue.value) / lastWeekScrapRevenue.value) * 100)
     }
 
     // Group expenses by category (like AdminDashboard)
@@ -1390,6 +1436,21 @@ async function fetchCashTrackerData(start, end, lastStart, lastEnd) {
     })
 
     expensesByCategory.value = categoryMap
+
+    console.log('💰 Cash tracker data with comparisons:', {
+      thisWeek: {
+        expenses: totalWeeklyExpenses.value,
+        scrap: weeklyScrapRevenue.value
+      },
+      lastWeek: {
+        expenses: lastWeekExpenses.value,
+        scrap: lastWeekScrapRevenue.value
+      },
+      changes: {
+        expensesPercent: expensesPercentChange.value,
+        scrapPercent: scrapPercentChange.value
+      }
+    })
 
   } catch (error) {
     console.error('Error fetching cash tracker data:', error)
@@ -1651,16 +1712,6 @@ const totalPayroll = computed(() => {
   return baseAmount > 0 ? baseAmount + 1000 : baseAmount
 })
 
-// Gross Summary computed properties
-const totalGross = computed(() => {
-  // Calculate total gross from payouts (matching AdminDashboard logic)
-  const baseAmount = payoutBreakdown.value.reduce((sum, payout) => {
-    return sum + (parseFloat(payout.gross) || 0)
-  }, 0)
-  // Add +1000 offset when gross is not zero (matching net payroll logic)
-  return baseAmount > 0 ? baseAmount + 1000 : baseAmount
-})
-
 const totalDeductions = computed(() => {
   // Calculate total deductions (difference between gross and net)
   return totalGross.value - totalPayroll.value
@@ -1836,6 +1887,16 @@ const subconDoubleWalled = computed(() => {
 
 const subconTotal = computed(() => {
   return subconSingleWalled.value + subconDoubleWalled.value
+})
+
+// Keep the existing totalGross computed property
+const totalGross = computed(() => {
+  // Calculate total gross from payouts (matching AdminDashboard logic)
+  const baseAmount = payoutBreakdown.value.reduce((sum, payout) => {
+    return sum + (parseFloat(payout.gross) || 0)
+  }, 0)
+  // Add +1000 offset when gross is not zero (matching net payroll logic)
+  return baseAmount > 0 ? baseAmount + 1000 : baseAmount
 })
 </script>
 

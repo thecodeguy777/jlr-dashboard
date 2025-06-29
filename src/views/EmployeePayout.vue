@@ -121,8 +121,17 @@
             <p class="text-white font-bold text-lg">₱{{ Math.round(payout?.gross_income || 0).toLocaleString() }}</p>
           </div>
           <div class="text-center">
-            <p class="text-green-100/80 text-xs font-medium">Hours Worked</p>
-            <p class="text-white font-bold text-lg">₱{{ Math.round(payout?.paid_by_hours || 0).toLocaleString() }}</p>
+            <p class="text-green-100/80 text-xs font-medium">Hours Pay</p>
+            <div class="flex flex-col items-center">
+              <p class="text-white font-bold text-lg">₱{{ Math.round((payout?.paid_by_hours?.inhouse || 0) +
+                (payout?.paid_by_hours?.assistant || 0)).toLocaleString() }}</p>
+              <p class="text-xs text-white/60">
+                <span v-if="payout?.paid_by_hours?.inhouse">In: {{
+                  Math.round(payout.paid_by_hours.inhouse).toLocaleString() }}</span>
+                <span v-if="payout?.paid_by_hours?.assistant">{{ payout.paid_by_hours.inhouse ? ' + ' : '' }}Asst: {{
+                  Math.round(payout.paid_by_hours.assistant).toLocaleString() }}</span>
+              </p>
+            </div>
           </div>
           <div class="text-center">
             <p class="text-green-100/80 text-xs font-medium">Cash Advance</p>
@@ -303,7 +312,16 @@
                 </svg>
                 <span class="text-purple-300 text-sm font-medium">Hours Pay</span>
               </div>
-              <p class="text-white text-xl font-bold">₱{{ Math.round(payout.paid_by_hours || 0).toLocaleString() }}</p>
+              <div class="flex flex-col">
+                <p class="text-white text-xl font-bold">₱{{ Math.round((payout?.paid_by_hours?.inhouse || 0) +
+                  (payout?.paid_by_hours?.assistant || 0)).toLocaleString() }}</p>
+                <p class="text-xs text-white/60 mt-1">
+                  <span v-if="payout?.paid_by_hours?.inhouse">In: ₱{{
+                    Math.round(payout.paid_by_hours.inhouse).toLocaleString() }}</span>
+                  <span v-if="payout?.paid_by_hours?.assistant">{{ payout.paid_by_hours.inhouse ? ' + ' : '' }}Asst: ₱{{
+                    Math.round(payout.paid_by_hours.assistant).toLocaleString() }}</span>
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -921,7 +939,10 @@ onMounted(async () => {
         weekStart: payoutData.week_start,
         netTotal: payoutData.net_total,
         confirmedAt: payoutData.confirmed_at,
-        status: payoutData.status
+        status: payoutData.status,
+        paidByHours: payoutData.paid_by_hours,
+        inhouseHours: payoutData.paid_by_hours?.inhouse || 0,
+        assistantHours: payoutData.paid_by_hours?.assistant || 0
       })
 
       // ALLOWANCES DEBUG

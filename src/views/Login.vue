@@ -64,7 +64,8 @@ async function handleLogin() {
     admin: '/admin',
     executive: '/executive',
     employee_admin: '/input',
-    employee: '/employee'
+    employee: '/employee',
+    driver: '/driver'
   }
 
   router.push(roleRoutes[userStore.role] || '/')
