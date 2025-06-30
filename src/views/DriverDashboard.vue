@@ -1,386 +1,174 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-orange-900 via-orange-950 to-gray-900 text-white">
+  <div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-orange-900">
+    <!-- Simple Header -->
+    <div class="bg-black/20 border-b border-white/10 p-3 flex items-center justify-between">
+      <h1 class="text-lg font-bold text-white">📱 Driver</h1>
+      <button @click="logout" class="bg-red-600 text-white px-3 py-1 rounded text-sm">
+        Logout
+      </button>
+    </div>
+
     <!-- GPS Permission Modal -->
-    <div v-if="showGpsModal" class="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-      <div class="bg-gray-800 rounded-xl p-6 max-w-sm w-full border border-orange-500/20">
-        <div class="text-center">
-          <div class="text-4xl mb-4">📍</div>
-          <h2 class="text-xl font-bold mb-2">GPS Required</h2>
-          <p class="text-gray-300 text-sm mb-6">
-            This app requires GPS location to track deliveries accurately. Please enable location services.
-          </p>
-          <div class="space-y-3">
-            <button @click="requestGps" 
-              class="w-full bg-orange-600 hover:bg-orange-700 py-3 rounded-lg font-semibold transition">
-              Enable GPS
-            </button>
-            <button @click="forceCloseModal" 
-              class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg text-sm transition">
-              Skip GPS (Testing)
-            </button>
-            <button @click="logout" 
-              class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded-lg text-sm transition">
-              Exit App
-            </button>
-          </div>
+    <div v-if="showGpsModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl p-8 max-w-md w-full text-center">
+        <div class="text-6xl mb-4">📍</div>
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Enable GPS</h2>
+        <p class="text-lg text-gray-600 mb-6">We need your location to track deliveries</p>
+        <div class="space-y-3">
+          <button @click="requestGps" class="w-full bg-blue-600 text-white py-4 rounded-xl text-xl font-medium">
+            Enable GPS
+          </button>
+          <button @click="forceCloseModal" class="w-full bg-gray-300 text-gray-700 py-3 rounded-xl text-lg">
+            Skip for Now
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Main Content -->
-    <div v-else class="p-6">
-      <!-- Header -->
-      <div class="flex justify-between items-start mb-8">
-        <div>
-          <h1 class="text-2xl font-bold">🚚 Driver App</h1>
-          <p class="text-orange-200 text-sm">{{ driverName || 'Driver' }}</p>
-        </div>
-        
-        <!-- Status Indicators -->
-        <div class="text-right space-y-1">
-          <div class="flex items-center gap-2 text-xs">
-            <div :class="['w-2 h-2 rounded-full', isOnline ? 'bg-green-400' : 'bg-red-400']"></div>
-            <span>{{ isOnline ? 'Online' : 'Offline' }}</span>
+    <div class="p-4 max-w-md mx-auto space-y-4">
+      <!-- COMBINED STATUS - Work + Delivery -->
+      <div class="bg-white/10 rounded-xl p-4">
+        <!-- Work Status Row -->
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <div class="text-xl">{{ isWorkSessionActive ? '🟢' : '🔴' }}</div>
+            <div>
+              <div class="text-white font-bold">{{ isWorkSessionActive ? 'WORKING' : 'OFF WORK' }}</div>
+              <div class="text-xs text-gray-300">
+                {{ isWorkSessionActive ? getFormattedWorkTime() : 'Clock in to start' }}
+              </div>
+            </div>
           </div>
           
-          <!-- Enhanced Sync Status -->
-          <div v-if="pendingSyncCount > 0" class="flex items-center gap-2 text-xs">
-            <div :class="['w-2 h-2 rounded-full', syncingStatus ? 'bg-orange-400 animate-pulse' : 'bg-yellow-400']"></div>
-            <span class="text-yellow-400">
-              {{ pendingSyncCount }} {{ syncingStatus ? 'syncing...' : 'pending' }}
+          <button @click="isWorkSessionActive ? clockOut : clockIn" 
+                  :disabled="!canPerformActions && !isWorkSessionActive"
+                  class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+            {{ isWorkSessionActive ? 'Clock Out' : 'Clock In' }}
+          </button>
+        </div>
+        
+        <!-- Delivery Status Row -->
+        <div v-if="isWorkSessionActive" class="flex items-center justify-between pt-3 border-t border-white/10">
+          <div class="flex items-center gap-2">
+            <div class="text-xl">
+              <span v-if="currentWorkflowState === 'IDLE'">😴</span>
+              <span v-else-if="currentWorkflowState === 'ROUTE_STARTED'">🚗</span>
+              <span v-else-if="currentWorkflowState === 'ARRIVED'">📍</span>
+              <span v-else-if="currentWorkflowState === 'DELIVERED'">✅</span>
+            </div>
+            <div>
+              <div class="text-white font-medium text-sm">
+                <span v-if="currentWorkflowState === 'IDLE'">Ready</span>
+                <span v-else-if="currentWorkflowState === 'ROUTE_STARTED'">Driving</span>
+                <span v-else-if="currentWorkflowState === 'ARRIVED'">At Location</span>
+                <span v-else-if="currentWorkflowState === 'DELIVERED'">Delivered</span>
+              </div>
+              <div class="text-xs text-gray-300">
+                <span v-if="currentWorkflowState === 'IDLE' && currentTask">
+                  {{ getDistanceToDestination() }} to {{ (currentTask.destination_name || 'destination').substring(0, 15) }}...
+                </span>
+                <span v-else-if="currentWorkflowState === 'ROUTE_STARTED' && currentTask">
+                  {{ getDistanceToDestination() }} remaining
+                </span>
+                <span v-else-if="currentWorkflowState === 'ARRIVED'">Complete delivery</span>
+                <span v-else-if="currentWorkflowState === 'DELIVERED'">Ready for next</span>
+                <span v-else>No stops assigned</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Mini Progress Dots -->
+          <div class="flex gap-1">
+            <div class="w-2 h-2 rounded-full" :class="workflowProgress.step >= 1 ? 'bg-blue-500' : 'bg-gray-600'"></div>
+            <div class="w-2 h-2 rounded-full" :class="workflowProgress.step >= 2 ? 'bg-blue-500' : 'bg-gray-600'"></div>
+            <div class="w-2 h-2 rounded-full" :class="workflowProgress.step >= 3 ? 'bg-green-500' : 'bg-gray-600'"></div>
+            <div class="w-2 h-2 rounded-full" :class="workflowProgress.step >= 4 ? 'bg-red-500' : 'bg-gray-600'"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COMPACT STOPS (max 3) -->
+      <div v-if="todayTasks.length > 0 && isWorkSessionActive" class="bg-white/10 rounded-xl p-4">
+        <h3 class="text-white font-bold mb-2 text-sm">📍 Today ({{ completedTasks.length }}/{{ todayTasks.length }})</h3>
+        <div class="space-y-1">
+          <div v-for="(task, index) in todayTasks.slice(0, 3)" :key="task.id" 
+               class="flex items-center gap-2 py-1">
+            <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                 :class="[
+                   task.status === 'completed' ? 'bg-green-600 text-white' :
+                   task.status === 'in_progress' ? 'bg-orange-600 text-white' :
+                   'bg-gray-600 text-white'
+                 ]">
+              {{ index + 1 }}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-white text-sm font-medium truncate">
+                {{ task.destination_name || 'Customer' }}
+              </div>
+            </div>
+            <div class="text-lg">
+              <span v-if="task.status === 'completed'">✅</span>
+              <span v-else-if="task.status === 'in_progress'">🔄</span>
+              <span v-else>⏳</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="todayTasks.length > 3" class="text-center text-xs text-gray-400 mt-1">
+          +{{ todayTasks.length - 3 }} more
+        </div>
+      </div>
+
+      <!-- MAIN ACTION BUTTON - Medium Size -->
+      <div v-if="isWorkSessionActive">
+        <button
+          :disabled="isActionDisabled"
+          :class="[
+            'w-full p-6 rounded-xl border transition-all duration-200 text-center',
+            isActionDisabled
+              ? 'bg-gray-700 border-gray-600 text-gray-400 cursor-not-allowed'
+              : nextAction.variant === 'danger'
+              ? 'bg-red-600 border-red-500 hover:bg-red-700 text-white'
+              : 'bg-blue-600 border-blue-500 hover:bg-blue-700 text-white'
+          ]"
+          @click="() => performAction(nextAction.type)"
+        >
+          <div class="text-3xl mb-2">{{ isLoading && currentAction === nextAction.type ? '⏳' : nextAction.icon }}</div>
+          <div class="text-lg font-bold">{{ nextAction.title }}</div>
+          <div class="text-sm opacity-80">{{ nextAction.subtitle }}</div>
+        </button>
+        
+        <!-- Warnings -->
+        <div v-if="isActionDisabled" class="bg-yellow-600/20 border border-yellow-500 rounded-lg p-3 text-center mt-2">
+          <div class="text-yellow-300 text-sm font-medium">
+            <span v-if="!isGpsAvailable">📍 GPS Needed - Turn on location</span>
+            <span v-else-if="!currentLocation">📍 Getting Location...</span>
+            <span v-else-if="gpsAccuracy > 50">📍 GPS Inaccurate - Move to open area</span>
+            <span v-else-if="!canStartNewRoute && nextAction.type === 'start_route' && isActiveRoute">
+               🚫 Route Already Active - Check delivery status above
+            </span>
+            <span v-else-if="!canStartNewRoute && nextAction.type === 'start_route' && totalDistance > 0">
+               🚫 GPS Tracking Active - {{ (totalDistance/1000).toFixed(1) }}km recorded
+            </span>
+            <span v-else-if="!canStartNewRoute && nextAction.type === 'start_route'">
+               🚫 Route Already Started - Complete current delivery cycle
             </span>
           </div>
-          
-          <!-- Legacy sync indicator (fallback) -->
-          <div v-else-if="unsyncedLogs.length > 0" class="flex items-center gap-2 text-xs text-yellow-400">
-            <div class="w-2 h-2 rounded-full bg-yellow-400"></div>
-            <span>{{ unsyncedLogs.length }} legacy sync</span>
-          </div>
-          
-          <!-- Sync success indicator -->
-          <div v-else-if="lastSyncTime && isOnline" class="flex items-center gap-2 text-xs text-green-400">
-            <div class="w-2 h-2 rounded-full bg-green-400"></div>
-            <span>✅ Synced</span>
-          </div>
-          
-          <div class="flex items-center gap-2 text-xs">
-            <span>📶 {{ signalStatus }}</span>
-          </div>
-          <div v-if="batteryLevel" class="flex items-center gap-2 text-xs">
-            <span>🔋 {{ batteryLevel }}%</span>
-          </div>
-          
-          <!-- Sync errors indicator -->
-          <div v-if="syncErrors.length > 0" class="flex items-center gap-2 text-xs text-red-400">
-            <span>⚠️ {{ syncErrors.length }} sync errors</span>
-          </div>
         </div>
       </div>
 
-      <!-- GPS Status -->
-      <div class="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div :class="['w-3 h-3 rounded-full', isGpsAvailable ? 'bg-green-400' : 'bg-red-400']"></div>
-            <div>
-              <div class="font-medium">GPS Status</div>
-              <div class="text-sm text-gray-300">
-                <span v-if="!isGpsAvailable">GPS Unavailable</span>
-                <span v-else-if="!currentLocation">Getting location...</span>
-                <span v-else>Accuracy: {{ Math.round(gpsAccuracy) }}m</span>
-              </div>
-            </div>
-          </div>
-          <button v-if="!isGpsAvailable" @click="requestGps" 
-            class="bg-orange-600 hover:bg-orange-700 px-3 py-1 rounded text-sm transition">
-            Retry GPS
-          </button>
+      <!-- Recent Activity (Compact) -->
+      <div v-if="recentLogs.length > 0 && isWorkSessionActive" class="bg-white/5 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-white font-medium text-sm">Recent</h3>
+          <span class="text-xs text-gray-400">{{ recentLogs.length }}</span>
         </div>
-      </div>
-
-      <!-- Work Session Status -->
-      <div class="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
-        <div v-if="!isWorkSessionActive" class="text-center">
-          <h3 class="text-lg font-semibold mb-3">👋 Ready to Start Work?</h3>
-          <button @click="clockIn" :disabled="!canPerformActions || isLoading"
-            class="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition w-full">
-            🕐 {{ isLoading ? 'Clocking In...' : 'CLOCK IN - Start Work Day' }}
-          </button>
-          <p class="text-sm text-gray-400 mt-2">GPS location required to clock in</p>
-        </div>
-        
-        <div v-else class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <div class="w-3 h-3 rounded-full bg-green-400 animate-pulse"></div>
-              <div class="font-medium text-green-300">🕐 Work Session Active</div>
-            </div>
-            <div class="text-right">
-              <div class="text-2xl font-bold text-green-400">{{ getFormattedWorkTime() }}</div>
-              <div class="text-xs text-gray-400">Total worked time</div>
-            </div>
+        <div class="space-y-1">
+          <div v-for="log in recentLogs.slice(0, 2)" :key="log.timestamp" 
+               class="flex items-center gap-2 text-sm">
+            <span class="text-lg">{{ getActionIcon(log.action_type) }}</span>
+            <span class="text-white text-xs">{{ getActionTitle(log.action_type) }}</span>
+            <span class="text-gray-400 text-xs ml-auto">{{ formatTime(log.timestamp) }}</span>
           </div>
-          
-          <!-- Work Session Stats -->
-          <div class="grid grid-cols-3 gap-4 text-sm bg-white/5 rounded-lg p-3">
-            <div class="text-center">
-              <div class="text-white font-medium">{{ sessionStats.totalRoutes }}</div>
-              <div class="text-gray-400 text-xs">Routes</div>
-            </div>
-            <div class="text-center">
-              <div class="text-white font-medium">{{ sessionStats.totalDeliveries }}</div>
-              <div class="text-gray-400 text-xs">Deliveries</div>
-            </div>
-            <div class="text-center">
-              <div class="text-white font-medium">{{ (sessionStats.totalDistance / 1000).toFixed(1) }}</div>
-              <div class="text-gray-400 text-xs">km driven</div>
-            </div>
-          </div>
-
-          <!-- Clock Out Button -->
-          <button @click="clockOut" :disabled="!canPerformActions || isLoading"
-            class="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition w-full">
-            🕐 {{ isLoading ? 'Clocking Out...' : 'CLOCK OUT - End Work Day' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Enhanced Tracking Status -->
-      <div v-if="isActiveRoute" class="bg-orange-900/20 border border-orange-500/30 rounded-xl p-4 mb-6">
-        <div class="flex items-center gap-2 mb-3">
-          <div class="w-3 h-3 rounded-full bg-orange-400 animate-pulse"></div>
-          <div class="font-medium text-orange-300">🚗 Route Active - Tracking Every 30s</div>
-        </div>
-        
-        <div class="grid grid-cols-3 gap-4 text-sm">
-          <div class="text-center">
-            <div class="text-orange-200 font-medium">{{ currentSpeed.toFixed(1) }}</div>
-            <div class="text-orange-400 text-xs">km/h</div>
-          </div>
-          <div class="text-center">
-            <div class="text-orange-200 font-medium">{{ (totalDistance / 1000).toFixed(2) }}</div>
-            <div class="text-orange-400 text-xs">km total</div>
-          </div>
-          <div class="text-center">
-            <div class="text-orange-200 font-medium">{{ clients.length }}</div>
-            <div class="text-orange-400 text-xs">geofences</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Today's Tasks -->
-      <div v-if="todayTasks.length > 0" class="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="font-semibold flex items-center gap-2">
-            📋 Today's Tasks
-            <span class="bg-orange-600 text-white text-xs px-2 py-1 rounded-full">{{ todayTasks.length }}</span>
-          </h3>
-          <button @click="refreshTasks" :disabled="taskLoading"
-            class="text-orange-400 hover:text-orange-300 text-sm">
-            {{ taskLoading ? '🔄' : '🔄 Refresh' }}
-          </button>
-        </div>
-
-        <!-- Task Progress Bar -->
-        <div v-if="todayTasks.length > 0" class="mb-4">
-          <div class="flex justify-between items-center text-xs text-gray-400 mb-1">
-            <span>Progress</span>
-            <span>{{ completedTasks.length }}/{{ todayTasks.length }} completed</span>
-          </div>
-          <div class="bg-white/20 rounded-full h-2">
-            <div class="bg-gradient-to-r from-orange-500 to-green-500 h-2 rounded-full transition-all duration-500" 
-                 :style="{ width: taskProgress + '%' }"></div>
-          </div>
-        </div>
-
-        <!-- Current Task Highlight -->
-        <div v-if="currentTask" class="bg-orange-900/30 border border-orange-500/50 rounded-lg p-3 mb-4">
-          <div class="flex items-center gap-2 mb-2">
-            <div class="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-            <span class="text-xs text-orange-300 font-medium">{{ currentTask.status === 'pending' ? 'NEXT TASK' : 'CURRENT TASK' }}</span>
-          </div>
-          <div class="flex justify-between items-start">
-            <div class="flex-1">
-              <h4 class="font-medium">{{ currentTask.task_title }}</h4>
-              <div class="flex items-center gap-2 text-sm text-orange-300 mt-1">
-                <span>{{ getTaskTypeIcon(currentTask.task_type) }}</span>
-                <span>{{ currentTask.destination_name }}</span>
-              </div>
-              <div class="text-xs text-gray-400 mt-1">{{ currentTask.destination_address }}</div>
-            </div>
-            <div class="text-right">
-              <div :class="[
-                'px-2 py-1 rounded text-xs font-medium',
-                currentTask.status === 'in_progress' ? 'bg-orange-900 text-orange-300' : 'bg-gray-900 text-gray-300'
-              ]">
-                {{ currentTask.status.replace('_', ' ').toUpperCase() }}
-              </div>
-              <div v-if="currentTask.estimated_duration" class="text-xs text-gray-400 mt-1">
-                ~{{ currentTask.estimated_duration }}min
-              </div>
-            </div>
-          </div>
-          <div class="flex gap-2 mt-3">
-            <button @click="navigateToTask(currentTask)" 
-              class="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 px-3 rounded-lg transition text-sm flex items-center justify-center gap-2">
-              🗺️ Navigate
-            </button>
-            <button v-if="currentTask.status === 'pending'" @click="startTask(currentTask)"
-              class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg transition text-sm flex items-center justify-center gap-2">
-              ▶️ Start
-            </button>
-            <button v-if="currentTask.status === 'in_progress'" @click="completeTask(currentTask)"
-              class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg transition text-sm flex items-center justify-center gap-2">
-              ✅ Complete
-            </button>
-          </div>
-        </div>
-
-        <!-- Compact Task List -->
-        <div class="space-y-2">
-          <div v-for="task in todayTasks.slice(0, 3)" :key="task.id" 
-               class="flex items-center justify-between p-2 bg-white/5 rounded-lg">
-            <div class="flex items-center gap-3">
-              <div :class="[
-                'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
-                task.status === 'completed' ? 'bg-green-600' :
-                task.status === 'in_progress' ? 'bg-orange-600' :
-                'bg-gray-600'
-              ]">
-                {{ task.task_order }}
-              </div>
-              <div>
-                <div class="font-medium text-sm">{{ task.task_title }}</div>
-                <div class="text-xs text-gray-400">{{ task.destination_name }}</div>
-              </div>
-            </div>
-            <div class="text-right">
-              <div :class="[
-                'px-2 py-1 rounded text-xs',
-                task.status === 'completed' ? 'bg-green-900 text-green-300' :
-                task.status === 'in_progress' ? 'bg-orange-900 text-orange-300' :
-                'bg-gray-900 text-gray-300'
-              ]">
-                {{ task.status === 'completed' ? '✅' : task.status === 'in_progress' ? '🔄' : '⏳' }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- View All Tasks Link -->
-        <div v-if="todayTasks.length > 3" class="text-center mt-3">
-          <button @click="showAllTasks = true" class="text-orange-400 hover:text-orange-300 text-sm">
-            View All {{ todayTasks.length }} Tasks →
-          </button>
-        </div>
-      </div>
-
-      <!-- No Tasks Message -->
-      <div v-else-if="!taskLoading && todayTasks.length === 0" class="bg-white/5 rounded-xl p-4 mb-6 border border-white/10 text-center">
-        <div class="text-4xl mb-2">📋</div>
-        <h3 class="font-medium mb-1">No Tasks Assigned</h3>
-        <p class="text-gray-400 text-sm">Check with your supervisor for today's assignments</p>
-      </div>
-
-      <!-- Main Action Buttons -->
-      <div class="space-y-4 mb-8">
-        <ActionButton
-          icon="🚀"
-          title="Start Route"
-          subtitle="Begin delivery route"
-          :disabled="!canPerformActions"
-          :loading="isLoading && currentAction === 'start_route'"
-          @click="() => performAction('start_route')"
-        />
-        
-        <ActionButton
-          icon="📍"
-          title="Arrived at Drop-off"
-          subtitle="Mark arrival at client location"
-          :disabled="!canPerformActions"
-          :loading="isLoading && currentAction === 'arrived'"
-          @click="() => performAction('arrived')"
-        />
-        
-        <ActionButton
-          icon="✅"
-          title="Delivered"
-          subtitle="Confirm successful delivery"
-          :disabled="!canPerformActions"
-          :loading="isLoading && currentAction === 'delivered'"
-          @click="() => performAction('delivered')"
-        />
-        
-        <ActionButton
-          v-if="isActiveRoute"
-          icon="🏁"
-          title="End Route"
-          subtitle="Finish route and stop GPS tracking"
-          :disabled="!canPerformActions"
-          :loading="isLoading && currentAction === 'end_route'"
-          @click="() => performAction('end_route')"
-          variant="danger"
-        />
-      </div>
-
-      <!-- Recent Activity -->
-      <div v-if="recentLogs.length > 0" class="bg-white/5 rounded-xl p-4 border border-white/10">
-        <h3 class="font-semibold mb-3 flex items-center gap-2">
-          📋 Recent Activity
-          <span v-if="unsyncedLogs.length > 0" class="bg-yellow-500 text-black text-xs px-2 py-0.5 rounded-full">
-            {{ unsyncedLogs.length }} pending
-          </span>
-        </h3>
-        <div class="space-y-2">
-          <div v-for="log in recentLogs.slice(0, 5)" :key="log.timestamp" 
-            class="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
-            <div class="flex items-center gap-3">
-              <span>{{ getActionIcon(log.action_type) }}</span>
-              <div>
-                <div class="text-sm font-medium">{{ getActionTitle(log.action_type) }}</div>
-                <div class="text-xs text-gray-400">{{ formatTime(log.timestamp) }}</div>
-              </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <div v-if="!log.synced" class="w-2 h-2 rounded-full bg-yellow-400" title="Pending sync"></div>
-              <div v-else class="w-2 h-2 rounded-full bg-green-400" title="Synced"></div>
-              <span class="text-xs text-gray-400">{{ Math.round(log.gps_accuracy) }}m</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Bottom Actions -->
-      <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-900 to-transparent">
-        <div class="flex gap-2">
-          <button @click="logout" 
-            class="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-medium transition">
-            🚪 Logout
-          </button>
-          
-          <!-- Enhanced Sync Button -->
-          <button v-if="pendingSyncCount > 0" @click="triggerSync" :disabled="syncingStatus || !isOnline"
-            class="flex-1 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 py-3 rounded-lg font-medium transition">
-            {{ syncingStatus ? '🔄 Syncing...' : `🔄 Sync (${pendingSyncCount})` }}
-          </button>
-          
-          <!-- Legacy sync fallback -->
-          <button v-else-if="unsyncedLogs.length > 0" @click="syncPendingLogs" 
-            class="flex-1 bg-yellow-600 hover:bg-yellow-700 py-3 rounded-lg font-medium transition">
-            🔄 Legacy ({{ unsyncedLogs.length }})
-          </button>
-          
-          <!-- Force sync when online with no pending items -->
-          <button v-else-if="isOnline && !syncingStatus" @click="triggerSync"
-            class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg font-medium transition">
-            🔄
-          </button>
-          
-          <!-- Sync status when offline -->
-          <button v-if="!isOnline" disabled
-            class="bg-gray-600 opacity-50 px-4 py-3 rounded-lg font-medium">
-            📱 Offline
-          </button>
         </div>
       </div>
     </div>
@@ -397,12 +185,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/useUserStore'
 import { useDriverTracking } from '@/composables/useDriverTracking'
 import { useTaskManagement } from '@/composables/useTaskManagement'
 import { useSyncManager } from '@/composables/useSyncManager'
+import { supabase } from '@/lib/supabase'
 import ActionButton from '@/components/driver/ActionButton.vue'
 import ActionModal from '@/components/driver/ActionModal.vue'
 
@@ -490,6 +279,131 @@ const taskProgress = computed(() => {
   return getRouteProgress(todayTasks.value)
 })
 
+// NEW: Simple workflow state machine for 60yo driver
+const currentWorkflowState = computed(() => {
+  // Get the most recent action from logs
+  const latestLog = recentLogs.value[0]
+  
+  if (!latestLog) {
+    return 'IDLE' // No actions yet
+  }
+  
+  // Determine state based on most recent action
+  switch (latestLog.action_type) {
+    case 'start_route':
+      return 'ROUTE_STARTED'
+    case 'arrived':
+      return 'ARRIVED'
+    case 'delivered':
+      return 'DELIVERED'
+    case 'end_route':
+      return 'IDLE'
+    default:
+      return 'IDLE'
+  }
+})
+
+const nextAction = computed(() => {
+  switch (currentWorkflowState.value) {
+    case 'IDLE':
+      return {
+        type: 'start_route',
+        icon: '🚀',
+        title: 'Start Route',
+        subtitle: 'Begin your delivery route',
+        variant: 'default'
+      }
+    case 'ROUTE_STARTED':
+      return {
+        type: 'arrived',
+        icon: '📍',
+        title: 'Arrived at Drop-off',
+        subtitle: 'Mark arrival at customer location',
+        variant: 'default'
+      }
+    case 'ARRIVED':
+      return {
+        type: 'delivered',
+        icon: '✅',
+        title: 'Delivered',
+        subtitle: 'Confirm successful delivery',
+        variant: 'default'
+      }
+    case 'DELIVERED':
+      return {
+        type: 'end_route',
+        icon: '🏁',
+        title: 'End Route',
+        subtitle: 'Finish route and stop tracking',
+        variant: 'danger'
+      }
+    default:
+      return {
+        type: 'start_route',
+        icon: '🚀',
+        title: 'Start Route',
+        subtitle: 'Begin your delivery route',
+        variant: 'default'
+      }
+  }
+})
+
+// Prevent starting route multiple times - CHECK DATABASE STATE
+const canStartNewRoute = computed(() => {
+  // If there's already an active route in the database, can't start new one
+  if (isActiveRoute.value) {
+    console.log('🚫 Cannot start new route - active route exists in database')
+    return false
+  }
+  
+  // If we're already collecting GPS breadcrumbs, route is active
+  if (currentLocation.value && gpsAccuracy.value <= 50 && totalDistance.value > 0) {
+    console.log('🚫 Cannot start new route - GPS tracking active with distance:', totalDistance.value)
+    return false
+  }
+  
+  // Check if we have recent "start_route" action that hasn't been completed
+  const recentStart = recentLogs.value.find(log => log.action_type === 'start_route')
+  const recentEnd = recentLogs.value.find(log => log.action_type === 'end_route')
+  
+  if (recentStart && (!recentEnd || new Date(recentStart.timestamp) > new Date(recentEnd.timestamp))) {
+    console.log('🚫 Cannot start new route - recent start_route without end_route')
+    return false
+  }
+  
+  // Only allow if truly IDLE
+  return currentWorkflowState.value === 'IDLE'
+})
+
+const isActionDisabled = computed(() => {
+  // Always require GPS for any action
+  if (!canPerformActions.value) return true
+  
+  // Special check for start_route - check database state
+  if (nextAction.value.type === 'start_route') {
+    if (!canStartNewRoute.value) {
+      return true
+    }
+  }
+  
+  return false
+})
+
+const workflowProgress = computed(() => {
+  switch (currentWorkflowState.value) {
+    case 'IDLE':
+      return { step: 1, total: 4, text: 'Ready to start' }
+    case 'ROUTE_STARTED':
+      return { step: 2, total: 4, text: 'Route in progress' }
+    case 'ARRIVED':
+      return { step: 3, total: 4, text: 'At drop-off location' }
+    case 'DELIVERED':
+      return { step: 4, total: 4, text: 'Delivery complete' }
+    default:
+      return { step: 1, total: 4, text: 'Ready to start' }
+  }
+})
+
 // Methods
 const requestGps = async () => {
   console.log('🔍 Requesting GPS permission...')
@@ -559,18 +473,144 @@ const handleActionConfirm = async (data) => {
       
       showActionModal.value = false
       
-      // Show success feedback
+      // Enhanced success feedback for 60yo driver
       const actionTitle = getActionTitle(currentAction.value)
-      alert(`✅ ${actionTitle} logged successfully!`)
+      const nextStep = getNextStepMessage(currentAction.value)
+      
+      alert(`✅ ${actionTitle} logged successfully!\n\n${nextStep}`)
+      
+      // Immediately refresh logs to update workflow state
+      loadRecentLogs()
     }
   } catch (error) {
     alert(`❌ Error: ${error.message}`)
   }
 }
 
-const logout = () => {
-  userStore.logout()
-  router.push('/login')
+// Helper function to provide clear next step guidance
+const getNextStepMessage = (actionType) => {
+  switch (actionType) {
+    case 'start_route':
+      return '🚗 Drive safely to your first delivery location.\nTap "Arrived at Drop-off" when you reach the customer.'
+    case 'arrived':
+      return '📦 Complete the delivery process.\nTap "Delivered" when the customer has received their order.'
+    case 'delivered':
+      return '🎉 Great job! \nTap "End Route" when all deliveries are complete.'
+    case 'end_route':
+      return '✅ Route completed! You can start a new route when ready.'
+    default:
+      return 'Continue with your next step.'
+  }
+}
+
+// Calculate distance to destination
+const getDistanceToDestination = () => {
+  if (!currentLocation.value || !currentTask.value) {
+    return 'Distance unknown'
+  }
+  
+  const task = currentTask.value
+  if (!task.destination_lat || !task.destination_lng) {
+    return 'Distance unknown'
+  }
+  
+  // Calculate distance using Haversine formula
+  const R = 6371 // Earth's radius in kilometers
+  const dLat = (task.destination_lat - currentLocation.value.latitude) * Math.PI / 180
+  const dLng = (task.destination_lng - currentLocation.value.longitude) * Math.PI / 180
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(currentLocation.value.latitude * Math.PI / 180) * 
+            Math.cos(task.destination_lat * Math.PI / 180) *
+            Math.sin(dLng/2) * Math.sin(dLng/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  const distance = R * c
+  
+  // Format distance appropriately
+  if (distance < 1) {
+    return `${Math.round(distance * 1000)}m`
+  } else {
+    return `${distance.toFixed(1)}km`
+  }
+}
+
+const logout = async () => {
+  try {
+    // CRITICAL: Save driver ID before clearing user store
+    const currentDriverId = driverId.value
+    console.log('🔄 Starting logout for driver:', currentDriverId)
+    
+    // Stop presence reporting first
+    stopPresenceReporting()
+    
+    // Mark driver as offline BEFORE clearing user
+    if (currentDriverId) {
+      console.log('👋 Marking driver as offline before logout')
+      
+      try {
+        // Try to update driver_presence table
+        const { error: presenceError } = await supabase
+          .from('driver_presence')
+          .update({
+            is_online: false,
+            last_seen: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('driver_id', currentDriverId)
+        
+        if (presenceError) {
+          console.warn('⚠️ Could not update presence table:', presenceError)
+          
+          // Fallback: Log offline activity
+          await supabase
+            .from('delivery_logs')
+            .insert({
+              driver_id: currentDriverId,
+              action_type: 'logout',
+              timestamp: new Date().toISOString(),
+              note: 'Driver logged out'
+            })
+          
+          console.log('📝 Logged logout activity as fallback')
+        } else {
+          console.log('✅ Driver marked as offline in presence table')
+        }
+      } catch (presenceError) {
+        console.warn('⚠️ Failed to update presence:', presenceError)
+        
+        // Fallback: Try logging activity
+        try {
+          await supabase
+            .from('delivery_logs')
+            .insert({
+              driver_id: currentDriverId,
+              action_type: 'logout',
+              timestamp: new Date().toISOString(),
+              note: 'Driver logged out - presence update failed'
+            })
+          console.log('📝 Fallback logout activity logged')
+        } catch (logError) {
+          console.warn('⚠️ Could not log logout activity:', logError)
+        }
+      }
+    } else {
+      console.warn('⚠️ No driver ID available for logout cleanup')
+    }
+    
+    // Clean up any tracking intervals or GPS monitoring
+    console.log('🧹 Cleaning up tracking resources')
+    
+    // NOW proceed with normal logout (this clears the user)
+    userStore.logout()
+    router.push('/login')
+    
+    console.log('✅ Logout complete')
+    
+  } catch (error) {
+    console.error('❌ Error during logout cleanup:', error)
+    // Still proceed with logout even if cleanup fails
+    userStore.logout()
+    router.push('/login')
+  }
 }
 
 const getActionIcon = (actionType) => {
@@ -609,10 +649,20 @@ const formatTime = (timestamp) => {
   return date.toLocaleDateString()
 }
 
+// Format clock time for work session start
+const formatClockTime = (timestamp) => {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 const loadRecentLogs = () => {
   // Load from localStorage for now (could be from Supabase for synced logs)
   const stored = JSON.parse(localStorage.getItem('unsynced_logs') || '[]')
   recentLogs.value = stored.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+  
+  console.log('📋 Loaded recent logs:', recentLogs.value.length, 'entries')
+  console.log('🔄 Current workflow state:', currentWorkflowState.value)
 }
 
 // Task Management Methods
@@ -717,9 +767,120 @@ const clockOut = async () => {
   }
 }
 
+// Driver Presence Reporting
+let presenceInterval = null
+
+const startPresenceReporting = async () => {
+  if (!driverId.value) {
+    console.warn('⚠️ Cannot start presence reporting - no driver ID')
+    return
+  }
+  
+  console.log('🟢 Starting presence reporting for driver:', driverId.value)
+  
+  // Clear any existing interval
+  if (presenceInterval) {
+    clearInterval(presenceInterval)
+  }
+  
+  // Update presence immediately
+  await updateDriverPresence()
+  
+  // Update presence every 30 seconds
+  presenceInterval = setInterval(async () => {
+    await updateDriverPresence()
+  }, 30000)
+  
+  console.log('✅ Driver presence reporting started with 30s interval')
+}
+
+const updateDriverPresence = async () => {
+  if (!driverId.value) {
+    console.error('❌ No driver ID available for presence update')
+    return
+  }
+  
+  console.log('📡 Updating driver presence for driver:', driverId.value)
+  
+  try {
+    // Use the database function for proper upsert
+    const { data: functionData, error: functionError } = await supabase
+      .rpc('upsert_driver_presence', {
+        p_driver_id: driverId.value,
+        p_is_online: true,
+        p_device_id: 'web'
+      })
+    
+    if (!functionError) {
+      console.log('✅ Driver presence updated via function')
+      return
+    }
+    
+    console.warn('⚠️ Database function failed:', functionError.message)
+    console.log('Trying direct upsert...')
+    
+    // Fallback to direct upsert
+    const { data: upsertData, error: upsertError } = await supabase
+      .from('driver_presence')
+      .upsert({
+        driver_id: driverId.value,
+        is_online: true,
+        last_seen: new Date().toISOString(),
+        device_id: 'web'
+      })
+      .select()
+    
+    if (!upsertError) {
+      console.log('✅ Driver presence updated via direct upsert:', upsertData)
+      return
+    }
+    
+    console.error('❌ Direct upsert failed:', upsertError.message)
+    console.log('Using activity fallback...')
+    await updateDriverActivity()
+    
+  } catch (error) {
+    console.error('❌ Unexpected error updating driver presence:', error)
+    await updateDriverActivity()
+  }
+}
+
+const updateDriverActivity = async () => {
+  try {
+    // Simple activity ping - we can use delivery_logs for this
+    await supabase
+      .from('delivery_logs')
+      .insert({
+        driver_id: driverId.value,
+        action_type: 'presence_ping',
+        timestamp: new Date().toISOString(),
+        note: 'Driver online - presence update'
+      })
+    
+    console.log('📡 Driver activity logged (presence ping)')
+  } catch (error) {
+    console.error('❌ Error logging driver activity:', error)
+  }
+}
+
+const stopPresenceReporting = () => {
+  if (presenceInterval) {
+    clearInterval(presenceInterval)
+    presenceInterval = null
+    console.log('🛑 Driver presence reporting stopped')
+  }
+}
+
 // Initialize
 onMounted(async () => {
   try {
+    // Check if user is still authenticated before initializing
+    if (!userStore.user || !userStore.user.id) {
+      console.log('📍 No authenticated user found during mount - redirecting to login')
+      router.push('/login')
+      return
+    }
+
     // Initialize driver profile
     await initializeDriverWithRouteCheck(userStore.user.id)
     
@@ -736,6 +897,9 @@ onMounted(async () => {
     setupAutoSync()
     console.log('🔄 Sync manager initialized')
     
+    // Start presence reporting (KEY ADDITION!)
+    await startPresenceReporting()
+    
     // Check GPS permission
     const hasGps = await requestGpsPermission()
     if (!hasGps) {
@@ -745,8 +909,21 @@ onMounted(async () => {
     }
   } catch (error) {
     console.error('Driver initialization error:', error)
-    alert('❌ Driver profile not found. Please contact admin.')
-    logout()
+    
+    // Only show error if user is still logged in (avoid showing during logout)
+    if (userStore.user && userStore.user.id) {
+      alert('❌ Driver profile not found. Please contact admin.')
+      logout()
+    } else {
+      console.log('📍 User logged out during initialization - skipping error alert')
+      router.push('/login')
+    }
   }
+})
+
+// Cleanup when component unmounts
+onUnmounted(() => {
+  console.log('🧹 DriverDashboard unmounting - cleaning up presence reporting')
+  stopPresenceReporting()
 })
 </script> 
