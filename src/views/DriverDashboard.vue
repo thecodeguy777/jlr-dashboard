@@ -89,32 +89,53 @@
 
       <!-- COMPACT STOPS (max 3) -->
       <div v-if="todayTasks.length > 0 && isWorkSessionActive" class="bg-white/10 rounded-xl p-4">
-        <h3 class="text-white font-bold mb-2 text-sm">📍 Today ({{ completedTasks.length }}/{{ todayTasks.length }})</h3>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-white font-bold text-sm">📍 Today ({{ completedTasks.length }}/{{ todayTasks.length }})</h3>
+          <button v-if="todayTasks.length > 3" 
+                  @click="isTaskListExpanded = !isTaskListExpanded"
+                  class="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+            {{ isTaskListExpanded ? '▲ Less' : '▼ All' }}
+          </button>
+        </div>
+        
         <div class="space-y-1">
-          <div v-for="(task, index) in todayTasks.slice(0, 3)" :key="task.id" 
-               class="flex items-center gap-2 py-1">
-            <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
-                 :class="[
-                   task.status === 'completed' ? 'bg-green-600 text-white' :
-                   task.status === 'in_progress' ? 'bg-orange-600 text-white' :
-                   'bg-gray-600 text-white'
-                 ]">
-              {{ index + 1 }}
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="text-white text-sm font-medium truncate">
-                {{ task.destination_name || 'Customer' }}
+          <transition-group name="task-list" tag="div" class="space-y-1">
+            <div v-for="(task, index) in (isTaskListExpanded ? todayTasks : todayTasks.slice(0, 3))" 
+                 :key="task.id" 
+                 class="flex items-center gap-2 py-1 transition-all duration-300">
+              <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                   :class="[
+                     task.status === 'completed' ? 'bg-green-600 text-white' :
+                     task.status === 'in_progress' ? 'bg-orange-600 text-white' :
+                     'bg-gray-600 text-white'
+                   ]">
+                {{ index + 1 }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-white text-sm font-medium truncate">
+                  {{ task.destination_name || 'Customer' }}
+                </div>
+              </div>
+              <div class="text-lg">
+                <span v-if="task.status === 'completed'">✅</span>
+                <span v-else-if="task.status === 'in_progress'">🔄</span>
+                <span v-else>⏳</span>
               </div>
             </div>
-            <div class="text-lg">
-              <span v-if="task.status === 'completed'">✅</span>
-              <span v-else-if="task.status === 'in_progress'">🔄</span>
-              <span v-else>⏳</span>
-            </div>
-          </div>
+          </transition-group>
         </div>
-        <div v-if="todayTasks.length > 3" class="text-center text-xs text-gray-400 mt-1">
-          +{{ todayTasks.length - 3 }} more
+        
+        <!-- Clickable expand/collapse footer -->
+        <div v-if="todayTasks.length > 3" class="text-center mt-2">
+          <button @click="isTaskListExpanded = !isTaskListExpanded"
+                  class="text-xs text-gray-400 hover:text-gray-300 transition-colors py-1 px-2 rounded">
+            <span v-if="!isTaskListExpanded">
+              +{{ todayTasks.length - 3 }} more stops ▼
+            </span>
+            <span v-else>
+              ▲ Show less
+            </span>
+          </button>
         </div>
       </div>
 
@@ -265,6 +286,7 @@ const currentAction = ref('')
 const driverName = ref('')
 const recentLogs = ref([])
 const showAllTasks = ref(false)
+const isTaskListExpanded = ref(false)
 
 // Computed
 const canPerformActions = computed(() => {
@@ -926,4 +948,29 @@ onUnmounted(() => {
   console.log('🧹 DriverDashboard unmounting - cleaning up presence reporting')
   stopPresenceReporting()
 })
-</script> 
+</script>
+
+<style scoped>
+/* Task list transition animations */
+.task-list-enter-active,
+.task-list-leave-active {
+  transition: all 0.3s ease;
+}
+
+.task-list-enter-from,
+.task-list-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.task-list-enter-to,
+.task-list-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Smooth expand/collapse button hover */
+.transition-colors {
+  transition: color 0.2s ease;
+}
+</style> 
