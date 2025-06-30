@@ -41,8 +41,7 @@
           </div>
           
           <button @click="isWorkSessionActive ? clockOut : clockIn" 
-                  :disabled="!canPerformActions && !isWorkSessionActive"
-                  class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                  class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
             {{ isWorkSessionActive ? 'Clock Out' : 'Clock In' }}
           </button>
         </div>
@@ -749,9 +748,10 @@ const completeTask = async (task) => {
 
 // Work Session Methods
 const clockIn = async () => {
-  if (!canPerformActions.value) {
-    alert('GPS location required with accuracy ≤ 50 meters to clock in')
-    return
+  // Clock in only needs basic GPS availability, not perfect accuracy
+  if (!isGpsAvailable.value) {
+    const proceed = confirm('⚠️ GPS not available. Clock in anyway?\n\nNote: You\'ll need GPS for deliveries later.')
+    if (!proceed) return
   }
 
   try {
@@ -767,9 +767,10 @@ const clockIn = async () => {
 }
 
 const clockOut = async () => {
-  if (!canPerformActions.value) {
-    alert('GPS location required with accuracy ≤ 50 meters to clock out')
-    return
+  // Clock out only needs basic GPS availability, not perfect accuracy
+  if (!isGpsAvailable.value) {
+    const proceed = confirm('⚠️ GPS not available. Clock out anyway?\n\nNote: Location will not be recorded.')
+    if (!proceed) return
   }
 
   // Confirm before clocking out
