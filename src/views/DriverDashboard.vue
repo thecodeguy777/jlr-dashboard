@@ -748,20 +748,33 @@ const completeTask = async (task) => {
 
 // Work Session Methods
 const clockIn = async () => {
+  console.log('🔥 CLOCK IN CLICKED!!! Event fired successfully')
+  console.log('🔥 isGpsAvailable:', isGpsAvailable.value)
+  console.log('🔥 driverId:', driverId.value)
+  
   // Clock in only needs basic GPS availability, not perfect accuracy
   if (!isGpsAvailable.value) {
+    console.log('🔥 GPS not available, showing confirm dialog')
     const proceed = confirm('⚠️ GPS not available. Clock in anyway?\n\nNote: You\'ll need GPS for deliveries later.')
-    if (!proceed) return
+    if (!proceed) {
+      console.log('🔥 User cancelled GPS confirm dialog')
+      return
+    }
   }
 
+  console.log('🔥 Calling startWorkSession...')
   try {
     const result = await startWorkSession()
+    console.log('🔥 startWorkSession result:', result)
     if (result.success) {
       alert(`✅ Work session started! Your time is being tracked.`)
       console.log('🕐 Clocked in successfully:', result.sessionId)
+    } else {
+      console.log('🔥 startWorkSession failed:', result)
+      alert(`❌ Failed to start work session: ${result.error || 'Unknown error'}`)
     }
   } catch (error) {
-    console.error('Clock in error:', error)
+    console.error('🔥 Clock in error:', error)
     alert(`❌ Failed to clock in: ${error.message}`)
   }
 }
