@@ -40,7 +40,7 @@
             </div>
           </div>
           
-          <button @click="isWorkSessionActive ? clockOut : clockIn" 
+          <button @click="testClick" 
                   class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
             {{ isWorkSessionActive ? 'Clock Out' : 'Clock In' }}
           </button>
@@ -426,6 +426,20 @@ const workflowProgress = computed(() => {
 })
 
 // Methods
+const testClick = () => {
+  console.log('🔥🔥🔥 BUTTON CLICKED!!! ANY CLICK WORKS!')
+  alert('🔥 BUTTON CLICK TEST - This proves the button works!')
+  
+  // Now try the actual clock in/out
+  if (isWorkSessionActive.value) {
+    console.log('🔥 Calling clockOut...')
+    clockOut()
+  } else {
+    console.log('🔥 Calling clockIn...')
+    clockIn()
+  }
+}
+
 const requestGps = async () => {
   console.log('🔍 Requesting GPS permission...')
   
