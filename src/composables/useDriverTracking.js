@@ -20,19 +20,55 @@ export function useDriverTracking() {
   const currentSpeed = ref(0)
   const totalDistance = ref(0)
 
+  // NEW: Work Session Management (Manual Payroll)
+  const isWorkSessionActive = ref(false)
+  const currentWorkSession = ref(null)
+  const sessionStartTime = ref(null)
+  const sessionEndTime = ref(null)
+  const totalWorkedMinutes = ref(0)
+  const sessionStats = ref({
+    totalRoutes: 0,
+    totalDeliveries: 0,
+    totalDistance: 0,
+    startTime: null,
+    endTime: null
+  })
+
   // GPS Tracking
   let watchId = null
   let sessionMonitorInterval = null
   let breadcrumbInterval = null
+  let wakeInterval = null // New: Keep app alive
+  let lastValidLocation = null // New: Store last good location
+  let locationBuffer = [] // New: Buffer for location filtering
+
+  // Enhanced GPS options for better accuracy
+  const GPS_OPTIONS = {
+    enableHighAccuracy: true,
+    timeout: 20000, // Increased timeout
+    maximumAge: 5000 // Reduced max age for fresher data
+  }
+
+  // Location filtering thresholds
+  const ACCURACY_THRESHOLD = 100 // Maximum acceptable accuracy in meters
+  const SPEED_THRESHOLD = 200 // Maximum realistic speed in km/h to filter GPS jumps
+  const DISTANCE_THRESHOLD = 1000 // Maximum distance jump in meters
 
   const requestGpsPermission = async () => {
     try {
       const position = await getCurrentPosition()
       isGpsAvailable.value = true
-      currentLocation.value = {
+      const newLocation = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude
       }
+      
+      // Only update if location passes filtering
+      if (isLocationValid(newLocation, position.coords.accuracy)) {
+        currentLocation.value = newLocation
+        lastValidLocation = newLocation
+      }
+      
       gpsAccuracy.value = position.coords.accuracy
       return true
     } catch (error) {
@@ -55,25 +91,155 @@ export function useDriverTracking() {
       navigator.geolocation.getCurrentPosition(
         resolve,
         reject,
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 30000
-        }
+        GPS_OPTIONS
       )
     })
+  }
+
+  // New: Enhanced location validation and filtering
+  const isLocationValid = (newLocation, accuracy) => {
+    // Check accuracy threshold
+    if (accuracy > ACCURACY_THRESHOLD) {
+      console.warn(`🎯 GPS accuracy too low: ${accuracy}m`)
+      return false
+    }
+
+    // If we don't have a previous location, accept this one
+    if (!lastValidLocation) {
+      return true
+    }
+
+    // Calculate distance from last valid location
+    const distance = calculateDistance(
+      lastValidLocation.latitude,
+      lastValidLocation.longitude,
+      newLocation.latitude,
+      newLocation.longitude
+    )
+
+    // Check for unrealistic jumps
+    if (distance > DISTANCE_THRESHOLD) {
+      console.warn(`🚨 GPS jump detected: ${distance.toFixed(0)}m - rejecting`)
+      logSessionEvent('gps_jump_filtered', { 
+        distance,
+        accuracy,
+        from: lastValidLocation,
+        to: newLocation
+      })
+      return false
+    }
+
+    return true
+  }
+
+  // New: Smooth location filtering using buffer
+  const addLocationToBuffer = (position) => {
+    const location = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+      timestamp: Date.now(),
+      speed: position.coords.speed || 0
+    }
+
+    locationBuffer.push(location)
+
+    // Keep only last 5 readings for filtering
+    if (locationBuffer.length > 5) {
+      locationBuffer.shift()
+    }
+
+    return getFilteredLocation()
+  }
+
+  // New: Get filtered location from buffer
+  const getFilteredLocation = () => {
+    if (locationBuffer.length === 0) return null
+
+    // If only one reading, use it if valid
+    if (locationBuffer.length === 1) {
+      const loc = locationBuffer[0]
+      return isLocationValid({ latitude: loc.latitude, longitude: loc.longitude }, loc.accuracy) 
+        ? loc : null
+    }
+
+    // Filter out readings with poor accuracy
+    const goodReadings = locationBuffer.filter(loc => loc.accuracy <= ACCURACY_THRESHOLD)
+    
+    if (goodReadings.length === 0) {
+      console.warn('🎯 No good GPS readings in buffer')
+      return null
+    }
+
+    // Use weighted average based on accuracy (better accuracy = higher weight)
+    let totalWeight = 0
+    let weightedLat = 0
+    let weightedLng = 0
+
+    goodReadings.forEach(reading => {
+      const weight = 1 / (reading.accuracy + 1) // Better accuracy = higher weight
+      totalWeight += weight
+      weightedLat += reading.latitude * weight
+      weightedLng += reading.longitude * weight
+    })
+
+    return {
+      latitude: weightedLat / totalWeight,
+      longitude: weightedLng / totalWeight,
+      accuracy: Math.min(...goodReadings.map(r => r.accuracy)),
+      timestamp: Date.now()
+    }
   }
 
   const startLocationTracking = () => {
     if (!navigator.geolocation) return
 
+    console.log('📍 Starting enhanced location tracking with filtering')
+
     watchId = navigator.geolocation.watchPosition(
       (position) => {
-        currentLocation.value = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
+        console.log(`🛰️ Raw GPS: ${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)} (±${position.coords.accuracy.toFixed(1)}m)`)
+        
+        // Add to buffer and get filtered location
+        const filteredLocation = addLocationToBuffer(position)
+        
+        if (filteredLocation) {
+          const newLocation = {
+            latitude: filteredLocation.latitude,
+            longitude: filteredLocation.longitude
+          }
+
+          // Additional speed-based filtering for GPS jumps
+          if (lastValidLocation) {
+            const distance = calculateDistance(
+              lastValidLocation.latitude,
+              lastValidLocation.longitude,
+              newLocation.latitude,
+              newLocation.longitude
+            )
+            
+            const timeDiff = (Date.now() - (lastValidLocation.timestamp || Date.now())) / 1000
+            const calculatedSpeed = timeDiff > 0 ? (distance / timeDiff) * 3.6 : 0 // km/h
+
+            if (calculatedSpeed > SPEED_THRESHOLD) {
+              console.warn(`🚨 Unrealistic speed detected: ${calculatedSpeed.toFixed(1)} km/h - rejecting`)
+              logSessionEvent('speed_filter_triggered', { 
+                speed: calculatedSpeed,
+                distance,
+                timeDiff
+              })
+              return
+            }
+          }
+
+          currentLocation.value = newLocation
+          lastValidLocation = { ...newLocation, timestamp: Date.now() }
+          gpsAccuracy.value = filteredLocation.accuracy
+
+          console.log(`✅ Filtered GPS: ${newLocation.latitude.toFixed(6)}, ${newLocation.longitude.toFixed(6)} (±${filteredLocation.accuracy.toFixed(1)}m)`)
+        } else {
+          console.warn('❌ GPS reading filtered out')
         }
-        gpsAccuracy.value = position.coords.accuracy
 
         // Detect potential GPS spoofing (accuracy too perfect)
         if (position.coords.accuracy < 1) {
@@ -86,13 +252,75 @@ export function useDriverTracking() {
       (error) => {
         console.error('Location tracking error:', error)
         isGpsAvailable.value = false
+        
+        // Log specific GPS errors
+        logSessionEvent('gps_error', { 
+          error: error.message,
+          code: error.code
+        })
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 30000
-      }
+      GPS_OPTIONS
     )
+
+    // Start wake interval to prevent app from sleeping
+    startWakeInterval()
+  }
+
+  // New: Keep app alive to prevent background suspension
+  const startWakeInterval = () => {
+    if (wakeInterval) return
+
+    console.log('⏰ Starting wake interval to prevent app suspension')
+    
+    wakeInterval = setInterval(() => {
+      // Ping to keep app alive
+      console.log('💓 App heartbeat - preventing suspension')
+      
+      // Update battery and connection status
+      updateDeviceStatus()
+      
+      // Update worked time if session is active
+      updateWorkedTime()
+      
+      // Check if we're still getting GPS updates
+      if (lastValidLocation) {
+        const timeSinceLastGPS = Date.now() - (lastValidLocation.timestamp || 0)
+        if (timeSinceLastGPS > 60000) { // No GPS for 1 minute
+          console.warn('⚠️ GPS tracking may have stopped - attempting restart')
+          logSessionEvent('gps_tracking_stalled', { timeSinceLastGPS })
+          
+          // Restart location tracking
+          if (watchId) {
+            navigator.geolocation.clearWatch(watchId)
+          }
+          startLocationTracking()
+        }
+      }
+    }, 30000) // Every 30 seconds
+  }
+
+  // New: Update device status
+  const updateDeviceStatus = async () => {
+    // Update online status
+    isOnline.value = navigator.onLine
+
+    // Update battery status if available
+    if ('getBattery' in navigator) {
+      try {
+        const battery = await navigator.getBattery()
+        batteryLevel.value = Math.round(battery.level * 100)
+        
+        // Log low battery warnings
+        if (batteryLevel.value < 20 && batteryLevel.value % 5 === 0) {
+          logSessionEvent('low_battery_warning', { level: batteryLevel.value })
+        }
+      } catch (error) {
+        console.warn('Battery API not available:', error)
+      }
+    }
+
+    // Update signal status based on connection
+    signalStatus.value = navigator.onLine ? 'good' : 'offline'
   }
 
   // Anti-cheat measures
@@ -134,9 +362,39 @@ export function useDriverTracking() {
 
   const handleVisibilityChange = () => {
     if (document.hidden) {
-      handleBlur()
+      console.log('📱 App hidden - starting background mode')
+      lastBlurTime.value = Date.now()
+      appFocused.value = false
+      
+      // Start service worker background tracking if route is active
+      if (isActiveRoute.value) {
+        startBackgroundTracking()
+      }
+      
+      logSessionEvent('app_hidden')
     } else {
-      handleFocus()
+      console.log('📱 App visible - resuming foreground mode')
+      const now = Date.now()
+      appFocused.value = true
+
+      if (lastBlurTime.value) {
+        const hiddenDuration = Math.floor((now - lastBlurTime.value) / 1000)
+        
+        logSessionEvent('app_visible', { 
+          hidden_duration: hiddenDuration,
+          long_absence: hiddenDuration > 300
+        })
+
+        // Stop background tracking
+        stopBackgroundTracking()
+
+        // Log session interruption if away for more than 5 minutes
+        if (hiddenDuration > 300) {
+          logSessionEvent('session_interruption', { duration: hiddenDuration })
+        }
+      }
+
+      lastBlurTime.value = null
     }
   }
 
@@ -273,9 +531,17 @@ export function useDriverTracking() {
     }
   }
 
-  // Breadcrumb logging function
+  // Enhanced breadcrumb logging function with filtering
   const logBreadcrumb = async () => {
     if (!isGpsAvailable.value || !currentLocation.value || !isActiveRoute.value) {
+      console.log('🍞 Breadcrumb skipped: GPS unavailable or route inactive')
+      return
+    }
+
+    // Skip if GPS accuracy is too poor
+    if (gpsAccuracy.value > ACCURACY_THRESHOLD) {
+      console.warn(`🍞 Breadcrumb skipped: Poor GPS accuracy ${gpsAccuracy.value}m`)
+      logSessionEvent('breadcrumb_skipped_accuracy', { accuracy: gpsAccuracy.value })
       return
     }
 
@@ -289,7 +555,8 @@ export function useDriverTracking() {
       battery_level: batteryLevel.value,
       signal_status: signalStatus.value,
       is_active_route: isActiveRoute.value,
-      synced: isOnline.value
+      synced: isOnline.value,
+      location_method: 'filtered' // Mark as filtered data
     }
 
     // Calculate speed and distance if we have a previous breadcrumb
@@ -404,8 +671,21 @@ export function useDriverTracking() {
       // Handle breadcrumb tracking based on action
       if (actionType === 'start_route') {
         startBreadcrumbTracking()
-      } else if (actionType === 'delivered' || actionType === 'end_route') {
+        // Increment route count in work session
+        if (isWorkSessionActive.value) {
+          sessionStats.value.totalRoutes++
+        }
+      } else if (actionType === 'delivered') {
+        // Increment delivery count in work session
+        if (isWorkSessionActive.value) {
+          sessionStats.value.totalDeliveries++
+        }
+      } else if (actionType === 'end_route') {
         stopBreadcrumbTracking()
+        // Update session distance
+        if (isWorkSessionActive.value) {
+          sessionStats.value.totalDistance += totalDistance.value
+        }
       }
 
       if (isOnline.value) {
@@ -591,11 +871,30 @@ export function useDriverTracking() {
         }
       }
 
+      // Sync work sessions
+      const storedWorkSessions = JSON.parse(localStorage.getItem('pending_work_sessions') || '[]')
+      
+      for (const workSession of storedWorkSessions) {
+        try {
+          const { error } = await supabase
+            .from('work_sessions')
+            .upsert(workSession)
+          
+          if (!error) {
+            const remaining = storedWorkSessions.filter(ws => ws.id !== workSession.id)
+            localStorage.setItem('pending_work_sessions', JSON.stringify(remaining))
+          }
+        } catch (syncError) {
+          console.error('Error syncing work session:', syncError)
+        }
+      }
+
       // Update unsynced logs count
       const totalUnsynced = 
         JSON.parse(localStorage.getItem('unsynced_logs') || '[]').length +
         JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]').length +
-        JSON.parse(localStorage.getItem('pending_geofence_events') || '[]').length
+        JSON.parse(localStorage.getItem('pending_geofence_events') || '[]').length +
+        JSON.parse(localStorage.getItem('pending_work_sessions') || '[]').length
       
       unsyncedLogs.value = totalUnsynced
     } catch (error) {
@@ -659,6 +958,10 @@ export function useDriverTracking() {
       clearInterval(breadcrumbInterval)
     }
 
+    if (wakeInterval) {
+      clearInterval(wakeInterval)
+    }
+
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', handleFocus)
     window.removeEventListener('blur', handleBlur)
@@ -666,28 +969,366 @@ export function useDriverTracking() {
     window.removeEventListener('offline', handleOffline)
   }
 
+  // Service Worker Communication
+  const setupServiceWorkerMessaging = () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', event => {
+        const { type, data } = event.data
+        console.log('📱 Main app received SW message:', type)
+        
+        switch (type) {
+          case 'BACKGROUND_PING':
+            console.log('💓 Service worker background ping')
+            // Send current location to service worker
+            sendLocationToServiceWorker()
+            break
+            
+          case 'SYNC_DELIVERY_LOGS':
+            console.log('🔄 Service worker requesting delivery logs sync')
+            syncPendingLogs()
+            break
+            
+          case 'SYNC_SESSION_LOGS':
+            console.log('🔄 Service worker requesting session logs sync')
+            syncPendingLogs()
+            break
+            
+          case 'APP_BACKGROUNDED':
+            console.log('📱 App went to background - service worker taking over')
+            handleAppBackgrounded()
+            break
+            
+          case 'APP_FOREGROUNDED':
+            console.log('📱 App came to foreground - resuming main tracking')
+            handleAppForegrounded()
+            break
+            
+          case 'PERIODIC_SYNC':
+            console.log('🔄 Periodic sync from service worker')
+            syncPendingLogs()
+            break
+            
+          default:
+            console.log('📱 Unknown service worker message:', type)
+        }
+      })
+    }
+  }
+
+  // Send location update to service worker
+  const sendLocationToServiceWorker = () => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller && currentLocation.value) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'UPDATE_LOCATION',
+        data: {
+          ...currentLocation.value,
+          accuracy: gpsAccuracy.value,
+          timestamp: Date.now()
+        }
+      })
+    }
+  }
+
+  // Start background tracking via service worker
+  const startBackgroundTracking = () => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'START_BACKGROUND_TRACKING',
+        data: {
+          driverId: driverId.value,
+          location: currentLocation.value,
+          isActiveRoute: isActiveRoute.value
+        }
+      })
+      console.log('🔄 Started service worker background tracking')
+    }
+  }
+
+  // Stop background tracking via service worker
+  const stopBackgroundTracking = () => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'STOP_BACKGROUND_TRACKING'
+      })
+      console.log('🛑 Stopped service worker background tracking')
+    }
+  }
+
+  // Handle app going to background
+  const handleAppBackgrounded = () => {
+    console.log('📱 App backgrounded - reducing main app activity')
+    // The service worker will maintain heartbeat
+    // Reduce frequency of main app operations
+  }
+
+  // Handle app coming to foreground
+  const handleAppForegrounded = () => {
+    console.log('📱 App foregrounded - resuming full tracking')
+    // Sync any missed data
+    syncPendingLogs()
+    
+    // Update current location immediately
+    if (isGpsAvailable.value) {
+      getCurrentPosition().then(position => {
+        console.log('📍 Updated location after foreground resume')
+      }).catch(error => {
+        console.warn('Failed to get location after resume:', error)
+      })
+    }
+  }
+
   // Auto-initialize on mount
   onMounted(() => {
     setupAntiCheat()
+    setupServiceWorkerMessaging() // Add service worker messaging
     
     // Calculate total unsynced items
     const totalUnsynced = 
       JSON.parse(localStorage.getItem('unsynced_logs') || '[]').length +
       JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]').length +
-      JSON.parse(localStorage.getItem('pending_geofence_events') || '[]').length
+      JSON.parse(localStorage.getItem('pending_geofence_events') || '[]').length +
+      JSON.parse(localStorage.getItem('pending_work_sessions') || '[]').length
     
     unsyncedLogs.value = totalUnsynced
     
     // Fetch clients for geofencing
     fetchClients()
+    
+    // Initialize work session if exists
+    loadExistingWorkSession()
+    
+    // Setup enhanced visibility change handling
+    document.addEventListener('visibilitychange', handleVisibilityChange)
   })
+
+  // =================== WORK SESSION MANAGEMENT ===================
+
+  // Start work day (Clock In)
+  const startWorkSession = async () => {
+    if (isWorkSessionActive.value) {
+      throw new Error('Work session already active')
+    }
+
+    if (!isGpsAvailable.value || !currentLocation.value) {
+      throw new Error('GPS location required to start work session')
+    }
+
+    isLoading.value = true
+
+    try {
+      const now = new Date()
+      const sessionId = `session_${driverId.value}_${now.getTime()}`
+      
+      const workSessionData = {
+        id: sessionId,
+        driver_id: driverId.value,
+        start_time: now.toISOString(),
+        start_location: {
+          latitude: currentLocation.value.latitude,
+          longitude: currentLocation.value.longitude,
+          accuracy: gpsAccuracy.value
+        },
+        end_time: null,
+        end_location: null,
+        total_worked_minutes: 0,
+        total_routes: 0,
+        total_deliveries: 0,
+        total_distance: 0,
+        status: 'active',
+        created_at: now.toISOString()
+      }
+
+      // Save to database if online
+      if (isOnline.value) {
+        const { error } = await supabase
+          .from('work_sessions')
+          .insert(workSessionData)
+
+        if (error) throw error
+      } else {
+        // Store locally for later sync
+        const stored = JSON.parse(localStorage.getItem('pending_work_sessions') || '[]')
+        stored.push(workSessionData)
+        localStorage.setItem('pending_work_sessions', JSON.stringify(stored))
+      }
+
+      // Update local state
+      currentWorkSession.value = workSessionData
+      sessionStartTime.value = now
+      isWorkSessionActive.value = true
+      sessionStats.value.startTime = now.toISOString()
+
+      // Save to localStorage for persistence
+      localStorage.setItem('current_work_session', JSON.stringify(workSessionData))
+
+      // Log session start
+      await logSessionEvent('work_session_started', {
+        session_id: sessionId,
+        start_location: workSessionData.start_location
+      })
+
+      console.log('🕐 Work session started:', sessionId)
+      return { success: true, sessionId }
+
+    } catch (error) {
+      console.error('Error starting work session:', error)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  // End work day (Clock Out)
+  const endWorkSession = async () => {
+    if (!isWorkSessionActive.value || !currentWorkSession.value) {
+      throw new Error('No active work session to end')
+    }
+
+    if (!isGpsAvailable.value || !currentLocation.value) {
+      throw new Error('GPS location required to end work session')
+    }
+
+    // End any active route first
+    if (isActiveRoute.value) {
+      stopBreadcrumbTracking()
+    }
+
+    isLoading.value = true
+
+    try {
+      const now = new Date()
+      const startTime = new Date(sessionStartTime.value)
+      const workedMinutes = Math.floor((now - startTime) / (1000 * 60))
+
+      const updatedSession = {
+        ...currentWorkSession.value,
+        end_time: now.toISOString(),
+        end_location: {
+          latitude: currentLocation.value.latitude,
+          longitude: currentLocation.value.longitude,
+          accuracy: gpsAccuracy.value
+        },
+        total_worked_minutes: workedMinutes,
+        total_routes: sessionStats.value.totalRoutes,
+        total_deliveries: sessionStats.value.totalDeliveries,
+        total_distance: Math.round(sessionStats.value.totalDistance),
+        status: 'completed'
+      }
+
+      // Save to database if online
+      if (isOnline.value) {
+        const { error } = await supabase
+          .from('work_sessions')
+          .upsert(updatedSession)
+
+        if (error) throw error
+      } else {
+        // Update pending sessions
+        const stored = JSON.parse(localStorage.getItem('pending_work_sessions') || '[]')
+        const index = stored.findIndex(s => s.id === updatedSession.id)
+        if (index !== -1) {
+          stored[index] = updatedSession
+        } else {
+          stored.push(updatedSession)
+        }
+        localStorage.setItem('pending_work_sessions', JSON.stringify(stored))
+      }
+
+      // Update local state
+      sessionEndTime.value = now
+      totalWorkedMinutes.value = workedMinutes
+      sessionStats.value.endTime = now.toISOString()
+      isWorkSessionActive.value = false
+
+      // Log session end
+      await logSessionEvent('work_session_ended', {
+        session_id: currentWorkSession.value.id,
+        total_worked_minutes: workedMinutes,
+        total_routes: sessionStats.value.totalRoutes,
+        total_deliveries: sessionStats.value.totalDeliveries,
+        end_location: updatedSession.end_location
+      })
+
+      // Clear localStorage
+      localStorage.removeItem('current_work_session')
+
+      console.log(`🕐 Work session ended: ${workedMinutes} minutes (${Math.round(workedMinutes/60*10)/10} hours)`)
+      
+      return { 
+        success: true, 
+        sessionData: updatedSession,
+        totalHours: Math.round(workedMinutes/60*10)/10,
+        totalMinutes: workedMinutes
+      }
+
+    } catch (error) {
+      console.error('Error ending work session:', error)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  // Load existing work session from localStorage
+  const loadExistingWorkSession = () => {
+    try {
+      const stored = localStorage.getItem('current_work_session')
+      if (stored) {
+        const session = JSON.parse(stored)
+        
+        // Check if session is from today (prevent carrying over old sessions)
+        const sessionDate = new Date(session.start_time).toDateString()
+        const today = new Date().toDateString()
+        
+        if (sessionDate === today) {
+          currentWorkSession.value = session
+          sessionStartTime.value = new Date(session.start_time)
+          isWorkSessionActive.value = true
+          sessionStats.value.startTime = session.start_time
+          
+          // Calculate current worked time
+          const now = new Date()
+          const startTime = new Date(session.start_time)
+          totalWorkedMinutes.value = Math.floor((now - startTime) / (1000 * 60))
+          
+          console.log('📂 Restored work session:', session.id)
+          console.log(`⏱️ Current worked time: ${Math.round(totalWorkedMinutes.value/60*10)/10} hours`)
+        } else {
+          // Clear old session
+          localStorage.removeItem('current_work_session')
+          console.log('🗑️ Cleared old work session from different day')
+        }
+      }
+    } catch (error) {
+      console.error('Error loading work session:', error)
+      localStorage.removeItem('current_work_session')
+    }
+  }
+
+  // Update worked time (called periodically)
+  const updateWorkedTime = () => {
+    if (isWorkSessionActive.value && sessionStartTime.value) {
+      const now = new Date()
+      const startTime = new Date(sessionStartTime.value)
+      totalWorkedMinutes.value = Math.floor((now - startTime) / (1000 * 60))
+    }
+  }
+
+  // Get formatted work time
+  const getFormattedWorkTime = () => {
+    const hours = Math.floor(totalWorkedMinutes.value / 60)
+    const minutes = totalWorkedMinutes.value % 60
+    return `${hours}h ${minutes}m`
+  }
+
+  // =================== ENHANCED ROUTE TRACKING ===================
 
   onUnmounted(() => {
     cleanup()
   })
 
   return {
-    // State
+    // Existing State
     isGpsAvailable,
     currentLocation,
     gpsAccuracy,
@@ -703,7 +1344,15 @@ export function useDriverTracking() {
     totalDistance,
     clients,
 
-    // Methods
+    // Work Session State
+    isWorkSessionActive,
+    currentWorkSession,
+    sessionStartTime,
+    sessionEndTime,
+    totalWorkedMinutes,
+    sessionStats,
+
+    // Existing Methods
     requestGpsPermission,
     startLocationTracking,
     logDeliveryAction,
@@ -713,6 +1362,13 @@ export function useDriverTracking() {
     startBreadcrumbTracking,
     stopBreadcrumbTracking,
     fetchClients,
-    cleanup
+    cleanup,
+
+    // Work Session Methods
+    startWorkSession,
+    endWorkSession,
+    updateWorkedTime,
+    getFormattedWorkTime,
+    loadExistingWorkSession
   }
 } 

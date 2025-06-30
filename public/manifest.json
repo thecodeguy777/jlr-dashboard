@@ -1,12 +1,23 @@
 {
   "name": "RenewCo Driver Tracking",
   "short_name": "RenewCo Drivers",
-  "description": "Driver tracking and delivery management system",
+  "description": "Driver tracking and delivery management system with persistent GPS tracking",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a1a",
   "theme_color": "#ea580c",
   "orientation": "portrait-primary",
+  "scope": "/",
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "permissions": [
+    "geolocation",
+    "background-sync",
+    "periodic-background-sync",
+    "storage"
+  ],
   "icons": [
     {
       "src": "/assets/renew-logo.png",
@@ -21,11 +32,9 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["business", "productivity"],
+  "categories": ["business", "productivity", "navigation"],
   "lang": "en",
   "dir": "ltr",
-  "scope": "/",
-  "prefer_related_applications": false,
   "shortcuts": [
     {
       "name": "Driver Dashboard",
@@ -50,6 +59,25 @@
           "sizes": "96x96"
         }
       ]
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+renewco",
+      "url": "/?action=%s"
+    }
+  ],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "related_applications": [],
+  "screenshots": [
+    {
+      "src": "/assets/renew-logo.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "platform": "wide",
+      "label": "Driver tracking dashboard"
     }
   ]
 } 

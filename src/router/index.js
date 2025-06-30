@@ -196,6 +196,13 @@ const routes = [
     path: '/driver-tracking',
     component: () => import('@/views/DriverTracking.vue'),
     meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
+  
+  // 📍 Client Management
+  {
+    path: '/clients',
+    component: () => import('@/views/ClientManagement.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
   }
 ]
 

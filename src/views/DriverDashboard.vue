@@ -76,6 +76,53 @@
         </div>
       </div>
 
+      <!-- Work Session Status -->
+      <div class="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
+        <div v-if="!isWorkSessionActive" class="text-center">
+          <h3 class="text-lg font-semibold mb-3">👋 Ready to Start Work?</h3>
+          <button @click="clockIn" :disabled="!canPerformActions || isLoading"
+            class="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition w-full">
+            🕐 {{ isLoading ? 'Clocking In...' : 'CLOCK IN - Start Work Day' }}
+          </button>
+          <p class="text-sm text-gray-400 mt-2">GPS location required to clock in</p>
+        </div>
+        
+        <div v-else class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-green-400 animate-pulse"></div>
+              <div class="font-medium text-green-300">🕐 Work Session Active</div>
+            </div>
+            <div class="text-right">
+              <div class="text-2xl font-bold text-green-400">{{ getFormattedWorkTime() }}</div>
+              <div class="text-xs text-gray-400">Total worked time</div>
+            </div>
+          </div>
+          
+          <!-- Work Session Stats -->
+          <div class="grid grid-cols-3 gap-4 text-sm bg-white/5 rounded-lg p-3">
+            <div class="text-center">
+              <div class="text-white font-medium">{{ sessionStats.totalRoutes }}</div>
+              <div class="text-gray-400 text-xs">Routes</div>
+            </div>
+            <div class="text-center">
+              <div class="text-white font-medium">{{ sessionStats.totalDeliveries }}</div>
+              <div class="text-gray-400 text-xs">Deliveries</div>
+            </div>
+            <div class="text-center">
+              <div class="text-white font-medium">{{ (sessionStats.totalDistance / 1000).toFixed(1) }}</div>
+              <div class="text-gray-400 text-xs">km driven</div>
+            </div>
+          </div>
+
+          <!-- Clock Out Button -->
+          <button @click="clockOut" :disabled="!canPerformActions || isLoading"
+            class="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-semibold transition w-full">
+            🕐 {{ isLoading ? 'Clocking Out...' : 'CLOCK OUT - End Work Day' }}
+          </button>
+        </div>
+      </div>
+
       <!-- Enhanced Tracking Status -->
       <div v-if="isActiveRoute" class="bg-orange-900/20 border border-orange-500/30 rounded-xl p-4 mb-6">
         <div class="flex items-center gap-2 mb-3">
@@ -224,7 +271,16 @@ const {
   startLocationTracking,
   logDeliveryAction,
   syncPendingLogs,
-  initializeDriver
+  initializeDriver,
+  // Work Session functionality
+  isWorkSessionActive,
+  currentWorkSession,
+  sessionStartTime,
+  totalWorkedMinutes,
+  sessionStats,
+  startWorkSession,
+  endWorkSession,
+  getFormattedWorkTime
 } = useDriverTracking()
 
 // Local state
@@ -362,6 +418,48 @@ const loadRecentLogs = () => {
   // Load from localStorage for now (could be from Supabase for synced logs)
   const stored = JSON.parse(localStorage.getItem('unsynced_logs') || '[]')
   recentLogs.value = stored.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+}
+
+// Work Session Methods
+const clockIn = async () => {
+  if (!canPerformActions.value) {
+    alert('GPS location required with accuracy ≤ 50 meters to clock in')
+    return
+  }
+
+  try {
+    const result = await startWorkSession()
+    if (result.success) {
+      alert(`✅ Work session started! Your time is being tracked.`)
+      console.log('🕐 Clocked in successfully:', result.sessionId)
+    }
+  } catch (error) {
+    console.error('Clock in error:', error)
+    alert(`❌ Failed to clock in: ${error.message}`)
+  }
+}
+
+const clockOut = async () => {
+  if (!canPerformActions.value) {
+    alert('GPS location required with accuracy ≤ 50 meters to clock out')
+    return
+  }
+
+  // Confirm before clocking out
+  const confirmClockOut = confirm(`Are you sure you want to clock out?\n\nYour current work time: ${getFormattedWorkTime()}\nThis will end your work session.`)
+  
+  if (!confirmClockOut) return
+
+  try {
+    const result = await endWorkSession()
+    if (result.success) {
+      alert(`✅ Work session ended!\n\nTotal time worked: ${result.totalHours} hours\n\nGreat job today! 🎉`)
+      console.log('🕐 Clocked out successfully:', result.sessionData)
+    }
+  } catch (error) {
+    console.error('Clock out error:', error)
+    alert(`❌ Failed to clock out: ${error.message}`)
+  }
 }
 
 // Initialize

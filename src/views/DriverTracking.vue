@@ -65,26 +65,54 @@
       </div>
     </div>
 
-    <!-- Navigation Tabs -->
-    <div class="flex gap-4 mb-6">
-      <button 
-        v-for="tab in [
-          { key: 'live', name: '🗺️ Live Map', count: stats.activeDrivers },
-          { key: 'logs', name: '📋 Action Logs', count: stats.logsToday },
-          { key: 'breadcrumbs', name: '📍 Breadcrumbs', count: stats.breadcrumbsToday },
-          { key: 'geofences', name: '🏢 Geofence Events', count: stats.geofenceEventsToday }
-        ]" 
-        :key="tab.key"
-        @click="selectedTab = tab.key"
-        :class="[
-          'px-4 py-2 rounded-lg transition font-medium',
-          selectedTab === tab.key 
-            ? 'bg-orange-600 text-white' 
-            : 'bg-white/10 text-white/70 hover:bg-white/20'
-        ]"
-      >
-        {{ tab.name }} ({{ tab.count }})
-      </button>
+    <!-- Navigation Tabs - Mobile Optimized -->
+    <div class="mb-6">
+      <!-- Mobile: Horizontal Scroll -->
+      <div class="md:hidden overflow-x-auto pb-2">
+        <div class="flex gap-2 min-w-max">
+          <button 
+            v-for="tab in [
+              { key: 'live', name: '🗺️ Live', count: stats.activeDrivers },
+              { key: 'logs', name: '📋 Logs', count: stats.logsToday },
+              { key: 'breadcrumbs', name: '📍 GPS', count: stats.breadcrumbsToday },
+              { key: 'geofences', name: '🏢 Zones', count: stats.geofenceEventsToday }
+            ]" 
+            :key="tab.key"
+            @click="selectedTab = tab.key"
+            :class="[
+              'px-4 py-3 rounded-lg transition font-medium whitespace-nowrap min-w-0 flex-shrink-0',
+              selectedTab === tab.key 
+                ? 'bg-orange-600 text-white shadow-lg' 
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            ]"
+          >
+            <div class="text-sm">{{ tab.name }}</div>
+            <div class="text-xs opacity-80">({{ tab.count }})</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Desktop: Regular Grid -->
+      <div class="hidden md:flex gap-4">
+        <button 
+          v-for="tab in [
+            { key: 'live', name: '🗺️ Live Map', count: stats.activeDrivers },
+            { key: 'logs', name: '📋 Action Logs', count: stats.logsToday },
+            { key: 'breadcrumbs', name: '📍 Breadcrumbs', count: stats.breadcrumbsToday },
+            { key: 'geofences', name: '🏢 Geofence Events', count: stats.geofenceEventsToday }
+          ]" 
+          :key="tab.key"
+          @click="selectedTab = tab.key"
+          :class="[
+            'px-4 py-2 rounded-lg transition font-medium',
+            selectedTab === tab.key 
+              ? 'bg-orange-600 text-white' 
+              : 'bg-white/10 text-white/70 hover:bg-white/20'
+          ]"
+        >
+          {{ tab.name }} ({{ tab.count }})
+        </button>
+      </div>
     </div>
 
     <!-- Live Map -->
@@ -92,62 +120,65 @@
       <LiveDriverMap />
     </div>
 
-    <!-- Data Tables -->
+    <!-- Data Display - Mobile Optimized -->
     <div v-else class="bg-white/5 rounded-xl border border-white/10">
       <div class="p-4 border-b border-white/10">
-        <h3 class="text-lg font-semibold">
-          <span v-if="selectedTab === 'logs'">📋 Recent Action Logs</span>
-          <span v-else-if="selectedTab === 'breadcrumbs'">📍 GPS Breadcrumbs (30s intervals)</span>
-          <span v-else-if="selectedTab === 'geofences'">🏢 Geofence Entry/Exit Events</span>
-        </h3>
-        <div v-if="stats.unsyncedLogs > 0" class="text-sm text-yellow-400 mt-1">
-          {{ stats.unsyncedLogs }} items pending sync
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h3 class="text-lg font-semibold">
+            <span v-if="selectedTab === 'logs'">📋 Recent Action Logs</span>
+            <span v-else-if="selectedTab === 'breadcrumbs'">📍 GPS Breadcrumbs (30s intervals)</span>
+            <span v-else-if="selectedTab === 'geofences'">🏢 Geofence Entry/Exit Events</span>
+          </h3>
+          <div class="flex items-center gap-3">
+            <div v-if="stats.unsyncedLogs > 0" class="text-sm text-yellow-400">
+              {{ stats.unsyncedLogs }} pending sync
+            </div>
+            <!-- Mobile filter/sort options could go here -->
+          </div>
         </div>
       </div>
       
-             <!-- Action Logs Table -->
-       <div v-if="selectedTab === 'logs'" class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="border-b border-white/10 bg-white/5">
-            <tr>
-              <th class="text-left p-4">Driver</th>
-              <th class="text-left p-4">Action</th>
-              <th class="text-left p-4">Timestamp</th>
-              <th class="text-left p-4">Location</th>
-              <th class="text-left p-4">GPS Accuracy</th>
-              <th class="text-left p-4">Status</th>
-              <th class="text-left p-4">Flags</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="log in deliveryLogs.slice(0, 50)" :key="log.id" 
-              class="border-b border-white/5 hover:bg-white/5">
-              <td class="p-4">
-                <div class="font-medium">{{ log.drivers?.name || 'Unknown' }}</div>
-                <div class="text-xs text-gray-400">{{ log.drivers?.phone || '' }}</div>
-              </td>
-              <td class="p-4">
-                <div class="flex items-center gap-2">
-                  <span>{{ getActionIcon(log.action_type) }}</span>
-                  <span>{{ getActionTitle(log.action_type) }}</span>
+      <!-- Action Logs - Mobile Cards + Desktop Table -->
+      <div v-if="selectedTab === 'logs'">
+        <!-- Mobile: Card Layout -->
+        <div class="md:hidden space-y-3 p-4">
+          <div v-for="log in deliveryLogs.slice(0, 20)" :key="log.id" 
+            class="bg-white/5 rounded-lg p-4 border border-white/10">
+            <!-- Header -->
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <span class="text-2xl">{{ getActionIcon(log.action_type) }}</span>
+                <div>
+                  <div class="font-medium text-white">{{ log.drivers?.name || 'Unknown Driver' }}</div>
+                  <div class="text-sm text-orange-300">{{ getActionTitle(log.action_type) }}</div>
                 </div>
-                <div v-if="log.note" class="text-xs text-gray-400 mt-1">{{ log.note }}</div>
-              </td>
-              <td class="p-4">
-                <div>{{ formatDateTime(log.timestamp) }}</div>
-              </td>
-              <td class="p-4">
-                <div class="text-xs font-mono">
-                  {{ log.latitude?.toFixed(6) || 'N/A' }}<br>
-                  {{ log.longitude?.toFixed(6) || 'N/A' }}
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-gray-400">{{ formatDateTime(log.timestamp) }}</div>
+                <div :class="['w-2 h-2 rounded-full mt-1 ml-auto', log.synced ? 'bg-green-400' : 'bg-yellow-400']"
+                  :title="log.synced ? 'Synced' : 'Pending sync'"></div>
+              </div>
+            </div>
+
+            <!-- Details Grid -->
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <!-- GPS Info -->
+              <div class="space-y-1">
+                <div class="text-gray-400">📍 Location</div>
+                <div v-if="log.latitude && log.longitude" class="font-mono text-white">
+                  {{ log.latitude.toFixed(4) }}, {{ log.longitude.toFixed(4) }}
                 </div>
+                <div v-else class="text-red-400">No GPS data</div>
                 <button v-if="log.latitude && log.longitude" @click="showOnMap(log)" 
-                  class="text-blue-400 hover:text-blue-300 text-xs mt-1">
+                  class="text-blue-400 hover:text-blue-300 text-xs">
                   🗺️ View on Map
                 </button>
-              </td>
-              <td class="p-4">
-                <span v-if="log.gps_accuracy" :class="['px-2 py-1 rounded text-xs',
+              </div>
+
+              <!-- Accuracy & Status -->
+              <div class="space-y-1">
+                <div class="text-gray-400">🎯 Accuracy</div>
+                <span v-if="log.gps_accuracy" :class="['px-2 py-1 rounded text-xs inline-block',
                   log.gps_accuracy <= 10 ? 'bg-green-900 text-green-300' :
                   log.gps_accuracy <= 50 ? 'bg-yellow-900 text-yellow-300' :
                   'bg-red-900 text-red-300'
@@ -155,30 +186,119 @@
                   {{ Math.round(log.gps_accuracy) }}m
                 </span>
                 <span v-else class="text-gray-500 text-xs">No GPS</span>
-              </td>
-              <td class="p-4">
-                <div class="flex items-center gap-3">
-                  <div :class="['w-2 h-2 rounded-full', log.synced ? 'bg-green-400' : 'bg-yellow-400']"
-                    :title="log.synced ? 'Synced' : 'Pending sync'"></div>
-                  <div class="text-xs">
-                    <div>🔋 {{ log.battery_level || 'N/A' }}%</div>
-                    <div>📶 {{ log.signal_status || 'Unknown' }}</div>
-                  </div>
-                </div>
-              </td>
-              <td class="p-4">
+              </div>
+
+              <!-- Device Info -->
+              <div class="space-y-1">
+                <div class="text-gray-400">📱 Device</div>
+                <div class="text-white">🔋 {{ log.battery_level || 'N/A' }}%</div>
+                <div class="text-white">📶 {{ log.signal_status || 'Unknown' }}</div>
+              </div>
+
+              <!-- Warnings -->
+              <div class="space-y-1">
+                <div class="text-gray-400">⚠️ Status</div>
                 <div v-if="getLogWarnings(log).length > 0" class="space-y-1">
                   <div v-for="warning in getLogWarnings(log)" :key="warning"
-                    class="text-red-400 text-xs flex items-center gap-1">
-                    <span>⚠️</span>
-                    <span>{{ warning }}</span>
+                    class="text-red-400 text-xs">
+                    {{ warning }}
                   </div>
                 </div>
                 <span v-else class="text-green-400 text-xs">✅ OK</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+
+            <!-- Note -->
+            <div v-if="log.note" class="mt-3 pt-3 border-t border-white/10">
+              <div class="text-gray-400 text-xs mb-1">📝 Note</div>
+              <div class="text-sm text-white">{{ log.note }}</div>
+            </div>
+          </div>
+
+          <!-- Load More Button -->
+          <div v-if="deliveryLogs.length > 20" class="text-center pt-4">
+            <button @click="showAllLogs = !showAllLogs" 
+              class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm transition">
+              {{ showAllLogs ? 'Show Less' : `Show All ${deliveryLogs.length} Logs` }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Desktop: Table Layout -->
+        <div class="hidden md:block overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="border-b border-white/10 bg-white/5">
+              <tr>
+                <th class="text-left p-4">Driver</th>
+                <th class="text-left p-4">Action</th>
+                <th class="text-left p-4">Timestamp</th>
+                <th class="text-left p-4">Location</th>
+                <th class="text-left p-4">GPS Accuracy</th>
+                <th class="text-left p-4">Status</th>
+                <th class="text-left p-4">Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="log in deliveryLogs.slice(0, 50)" :key="log.id" 
+                class="border-b border-white/5 hover:bg-white/5">
+                <td class="p-4">
+                  <div class="font-medium">{{ log.drivers?.name || 'Unknown' }}</div>
+                  <div class="text-xs text-gray-400">{{ log.drivers?.phone || '' }}</div>
+                </td>
+                <td class="p-4">
+                  <div class="flex items-center gap-2">
+                    <span>{{ getActionIcon(log.action_type) }}</span>
+                    <span>{{ getActionTitle(log.action_type) }}</span>
+                  </div>
+                  <div v-if="log.note" class="text-xs text-gray-400 mt-1">{{ log.note }}</div>
+                </td>
+                <td class="p-4">
+                  <div>{{ formatDateTime(log.timestamp) }}</div>
+                </td>
+                <td class="p-4">
+                  <div class="text-xs font-mono">
+                    {{ log.latitude?.toFixed(6) || 'N/A' }}<br>
+                    {{ log.longitude?.toFixed(6) || 'N/A' }}
+                  </div>
+                  <button v-if="log.latitude && log.longitude" @click="showOnMap(log)" 
+                    class="text-blue-400 hover:text-blue-300 text-xs mt-1">
+                    🗺️ View on Map
+                  </button>
+                </td>
+                <td class="p-4">
+                  <span v-if="log.gps_accuracy" :class="['px-2 py-1 rounded text-xs',
+                    log.gps_accuracy <= 10 ? 'bg-green-900 text-green-300' :
+                    log.gps_accuracy <= 50 ? 'bg-yellow-900 text-yellow-300' :
+                    'bg-red-900 text-red-300'
+                  ]">
+                    {{ Math.round(log.gps_accuracy) }}m
+                  </span>
+                  <span v-else class="text-gray-500 text-xs">No GPS</span>
+                </td>
+                <td class="p-4">
+                  <div class="flex items-center gap-3">
+                    <div :class="['w-2 h-2 rounded-full', log.synced ? 'bg-green-400' : 'bg-yellow-400']"
+                      :title="log.synced ? 'Synced' : 'Pending sync'"></div>
+                    <div class="text-xs">
+                      <div>🔋 {{ log.battery_level || 'N/A' }}%</div>
+                      <div>📶 {{ log.signal_status || 'Unknown' }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="p-4">
+                  <div v-if="getLogWarnings(log).length > 0" class="space-y-1">
+                    <div v-for="warning in getLogWarnings(log)" :key="warning"
+                      class="text-red-400 text-xs flex items-center gap-1">
+                      <span>⚠️</span>
+                      <span>{{ warning }}</span>
+                    </div>
+                  </div>
+                  <span v-else class="text-green-400 text-xs">✅ OK</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Breadcrumbs Table -->

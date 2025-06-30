@@ -7,12 +7,28 @@
           <div class="text-2xl font-bold tracking-tight">👑 Admin Panel</div>
           <p class="text-sm text-white/60">Welcome back, Admin Jayson</p>
         </div>
-        <!-- Date Navigation (Daily) -->
+        <!-- View Type and Date Navigation -->
         <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-6">
+          <!-- View Type Selector -->
+          <div class="flex gap-2 mb-4">
+            <button v-for="view in ['weekly', 'monthly']" :key="view" :class="[
+              'px-4 py-2 rounded-full text-sm font-medium transition-all',
+              viewType === view
+                ? 'bg-orange-500 text-white'
+                : 'bg-white/10 text-white/60 hover:bg-white/20'
+            ]" @click="viewType = view">
+              {{ view === 'weekly' ? '📅 Weekly' : '📊 Monthly' }}
+            </button>
+          </div>
+
           <div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
-            <label class="text-sm text-white/60">📅 Select Week Ending (Saturday):</label>
-            <input type="date" v-model="selectedSaturday"
+            <label class="text-sm text-white/60">
+              {{ viewType === 'weekly' ? '📅 Select Week Ending (Saturday):' : '📊 Select Month:' }}
+            </label>
+            <input v-if="viewType === 'weekly'" type="date" v-model="selectedSaturday"
               class="bg-gray-800 text-white text-sm p-2 rounded border border-white/10" @change="snapToSaturday" />
+            <input v-else type="month" v-model="selectedMonth"
+              class="bg-gray-800 text-white text-sm p-2 rounded border border-white/10" />
           </div>
 
           <!-- Action Buttons -->
@@ -28,6 +44,10 @@
             <router-link to="/driver-tracking"
               class="bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow transition">
               🚚 Driver Tracking
+            </router-link>
+            <router-link to="/clients"
+              class="bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow transition">
+              📍 Client Locations
             </router-link>
           </div>
         </div>
@@ -84,19 +104,18 @@
                 <span>₱{{ (weeklyScrapRevenue || 0).toLocaleString() }}</span>
               </div>
             </div>
-            <p class="text-xs text-white/40 text-center">Based on deliveries & transactions this week</p>
+            <p class="text-xs text-white/40 text-center">Based on deliveries & transactions this {{ viewType === 'weekly' ? 'week' : 'month' }}</p>
           </div>
           <div class="bg-white/10 rounded-xl p-4 shadow">
-            <h2 class="text-sm font-medium text-white/70">Deliveries This Week</h2>
+            <h2 class="text-sm font-medium text-white/70">Deliveries This {{ viewType === 'weekly' ? 'Week' : 'Month' }}</h2>
             <p class="text-3xl font-bold text-green-400 mt-2">{{ deliveriesCount }} pcs</p>
             <p class="text-xs mt-1" :class="{
               'text-green-400': deliveriesPercentChange > 0,
               'text-red-400': deliveriesPercentChange < 0,
               'text-white/40': deliveriesPercentChange === 0
             }">
-              <span v-if="deliveriesPercentChange > 0">↑ {{ deliveriesPercentChange }}% from last week</span>
-              <span v-else-if="deliveriesPercentChange < 0">↓ {{ Math.abs(deliveriesPercentChange) }}% from last
-                week</span>
+              <span v-if="deliveriesPercentChange > 0">↑ {{ deliveriesPercentChange }}% from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
+              <span v-else-if="deliveriesPercentChange < 0">↓ {{ Math.abs(deliveriesPercentChange) }}% from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
               <span v-else>— 0% change</span>
             </p>
             <div class="grid grid-cols-2 gap-2 mt-2 text-sm text-white/60">
@@ -114,16 +133,16 @@
           </div>
 
           <div class="bg-white/10 rounded-xl p-4 shadow">
-            <h2 class="text-sm font-medium text-white/70">Payroll to be Paid This Week</h2>
+            <h2 class="text-sm font-medium text-white/70">Payroll to be Paid This {{ viewType === 'weekly' ? 'Week' : 'Month' }}</h2>
             <p class="text-3xl font-bold text-red-400 mt-2">₱{{ totalSalaries.toLocaleString() }}</p>
             <p class="text-xs text-white/40 mt-1">Updated today</p>
           </div>
 
 
 
-          <!-- Weekly Expenses Card -->
+          <!-- Expenses Card -->
           <div class="bg-white/10 rounded-xl p-4 shadow space-y-3">
-            <h2 class="text-sm font-medium text-white/70">💸 Weekly Expenses</h2>
+            <h2 class="text-sm font-medium text-white/70">💸 {{ viewType === 'weekly' ? 'Weekly' : 'Monthly' }} Expenses</h2>
 
             <div class="text-center">
               <p class="text-3xl font-bold text-red-400">
@@ -134,10 +153,9 @@
                 'text-red-400': expensesPercentChange > 0,
                 'text-white/40': expensesPercentChange === 0
               }">
-                <span v-if="expensesPercentChange > 0">↑ {{ expensesPercentChange }}% from last week</span>
-                <span v-else-if="expensesPercentChange < 0">↓ {{ Math.abs(expensesPercentChange) }}% from last
-                  week</span>
-                <span v-else>— 0% change from last week</span>
+                <span v-if="expensesPercentChange > 0">↑ {{ expensesPercentChange }}% from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
+                <span v-else-if="expensesPercentChange < 0">↓ {{ Math.abs(expensesPercentChange) }}% from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
+                <span v-else>— 0% change from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
               </p>
             </div>
 
@@ -168,9 +186,9 @@
                 'text-red-400': scrapPercentChange < 0,
                 'text-white/40': scrapPercentChange === 0
               }">
-                <span v-if="scrapPercentChange > 0">↑ {{ scrapPercentChange }}% from last week</span>
-                <span v-else-if="scrapPercentChange < 0">↓ {{ Math.abs(scrapPercentChange) }}% from last week</span>
-                <span v-else>— 0% change from last week</span>
+                <span v-if="scrapPercentChange > 0">↑ {{ scrapPercentChange }}% from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
+                <span v-else-if="scrapPercentChange < 0">↓ {{ Math.abs(scrapPercentChange) }}% from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
+                <span v-else>— 0% change from last {{ viewType === 'weekly' ? 'week' : 'month' }}</span>
               </p>
             </div>
 
@@ -187,7 +205,7 @@
 
         <!-- Expense Breakdown Section -->
         <div v-if="Object.keys(expensesByCategory).length > 0" class="bg-white/5 rounded-xl p-6 mb-8">
-          <h3 class="text-lg font-semibold text-white mb-4">💸 Weekly Expense Breakdown</h3>
+          <h3 class="text-lg font-semibold text-white mb-4">💸 {{ viewType === 'weekly' ? 'Weekly' : 'Monthly' }} Expense Breakdown</h3>
 
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div v-for="[name, category] in Object.entries(expensesByCategory)" :key="name"
@@ -236,7 +254,7 @@
 
           <!-- Total Summary -->
           <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
-            <span class="text-white/80 font-medium">Total Weekly Expenses:</span>
+            <span class="text-white/80 font-medium">Total {{ viewType === 'weekly' ? 'Weekly' : 'Monthly' }} Expenses:</span>
             <span class="text-2xl font-bold text-red-400">₱{{ (totalWeeklyExpenses || 0).toLocaleString() }}</span>
           </div>
         </div>
@@ -344,6 +362,8 @@ import { ref, watch, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase'
 
 const selectedSaturday = ref(new Date().toISOString().split('T')[0])
+const selectedMonth = ref(new Date().toISOString().slice(0, 7)) // YYYY-MM format
+const viewType = ref('weekly') // 'weekly' or 'monthly'
 const loading = ref(false)
 const deliveriesCount = ref(0)
 const activeEmployees = ref(0)
@@ -379,30 +399,49 @@ function snapToSaturday() {
 }
 
 function getRange() {
-  const today = new Date(selectedSaturday.value);
-  today.setHours(0, 0, 0, 0);
+  if (viewType.value === 'monthly') {
+    // Monthly range calculation
+    const [year, month] = selectedMonth.value.split('-').map(Number);
+    const currentMonthStart = new Date(year, month - 1, 1);
+    const currentMonthEnd = new Date(year, month, 0); // Last day of current month
+    
+    // Previous month for comparison
+    const prevMonthStart = new Date(year, month - 2, 1);
+    const prevMonthEnd = new Date(year, month - 1, 0); // Last day of previous month
 
-  if (isNaN(today.getTime())) {
-    console.error('Invalid date:', selectedSaturday.value);
     return {
-      start: '',
-      end: '',
-      lastStart: '',
-      lastEnd: ''
+      start: formatDate(currentMonthStart),
+      end: formatDate(currentMonthEnd),
+      lastStart: formatDate(prevMonthStart),
+      lastEnd: formatDate(prevMonthEnd)
+    };
+  } else {
+    // Weekly range calculation (existing logic)
+    const today = new Date(selectedSaturday.value);
+    today.setHours(0, 0, 0, 0);
+
+    if (isNaN(today.getTime())) {
+      console.error('Invalid date:', selectedSaturday.value);
+      return {
+        start: '',
+        end: '',
+        lastStart: '',
+        lastEnd: ''
+      };
+    }
+
+    const saturday = calculateSaturday(today);
+    const startOfWeek = calculateStartOfWeek(saturday);
+    const lastSaturday = calculateLastSaturday(saturday);
+    const lastStartOfWeek = calculateStartOfWeek(lastSaturday);
+
+    return {
+      start: formatDate(startOfWeek),
+      end: formatDate(saturday),
+      lastStart: formatDate(lastStartOfWeek),
+      lastEnd: formatDate(lastSaturday)
     };
   }
-
-  const saturday = calculateSaturday(today);
-  const startOfWeek = calculateStartOfWeek(saturday);
-  const lastSaturday = calculateLastSaturday(saturday);
-  const lastStartOfWeek = calculateStartOfWeek(lastSaturday);
-
-  return {
-    start: formatDate(startOfWeek),
-    end: formatDate(saturday),
-    lastStart: formatDate(lastStartOfWeek),
-    lastEnd: formatDate(lastSaturday)
-  };
 }
 
 // Returns the Saturday of the week for a given date
@@ -820,7 +859,19 @@ async function fetchKPIs() {
 
 
 watch(selectedSaturday, async () => {
-  snapToSaturday()
+  if (viewType.value === 'weekly') {
+    snapToSaturday()
+    await fetchKPIs()
+  }
+})
+
+watch(selectedMonth, async () => {
+  if (viewType.value === 'monthly') {
+    await fetchKPIs()
+  }
+})
+
+watch(viewType, async () => {
   await fetchKPIs()
 })
 
