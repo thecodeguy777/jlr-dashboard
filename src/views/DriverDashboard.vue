@@ -428,6 +428,18 @@ const workflowProgress = computed(() => {
 // Methods
 const testClick = () => {
   console.log('🔥🔥🔥 BUTTON CLICKED!!! ANY CLICK WORKS!')
+  console.log('🔥 Button Status Debug:')
+  console.log('🔥 isActionDisabled:', isActionDisabled.value)
+  console.log('🔥 canPerformActions:', canPerformActions.value)
+  console.log('🔥 isGpsAvailable:', isGpsAvailable.value)
+  console.log('🔥 currentLocation:', currentLocation.value)
+  console.log('🔥 gpsAccuracy:', gpsAccuracy.value)
+  console.log('🔥 canStartNewRoute:', canStartNewRoute.value)
+  console.log('🔥 isActiveRoute:', isActiveRoute.value)
+  console.log('🔥 totalDistance:', totalDistance.value)
+  console.log('🔥 currentWorkflowState:', currentWorkflowState.value)
+  console.log('🔥 recentLogs:', recentLogs.value)
+  
   alert('🔥 BUTTON CLICK TEST - This proves the button works!')
   
   // Now try the actual clock in/out
@@ -764,7 +776,7 @@ const completeTask = async (task) => {
 const clockIn = async () => {
   console.log('🔥 CLOCK IN CLICKED!!! Event fired successfully')
   console.log('🔥 isGpsAvailable:', isGpsAvailable.value)
-  console.log('🔥 driverId:', driverId.value)
+  console.log('�� driverId:', driverId.value)
   
   // Clock in only needs basic GPS availability, not perfect accuracy
   if (!isGpsAvailable.value) {
