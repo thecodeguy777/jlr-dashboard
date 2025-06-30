@@ -203,6 +203,13 @@ const routes = [
     path: '/clients',
     component: () => import('@/views/ClientManagement.vue'),
     meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
+  
+  // 📋 Task Management
+  {
+    path: '/task-management',
+    component: () => import('@/views/TaskManagement.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
   }
 ]
 

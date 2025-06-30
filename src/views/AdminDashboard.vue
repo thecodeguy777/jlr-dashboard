@@ -45,6 +45,10 @@
               class="bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow transition">
               🚚 Driver Tracking
             </router-link>
+            <router-link to="/task-management"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow transition">
+              📋 Task Management
+            </router-link>
             <router-link to="/clients"
               class="bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow transition">
               📍 Client Locations
