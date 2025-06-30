@@ -271,7 +271,7 @@ const {
   startLocationTracking,
   logDeliveryAction,
   syncPendingLogs,
-  initializeDriver,
+  initializeDriverWithRouteCheck,
   // Work Session functionality
   isWorkSessionActive,
   currentWorkSession,
@@ -466,7 +466,7 @@ const clockOut = async () => {
 onMounted(async () => {
   try {
     // Initialize driver profile
-    await initializeDriver(userStore.user.id)
+    await initializeDriverWithRouteCheck(userStore.user.id)
     
     // Get driver name
     driverName.value = userStore.user.email

@@ -76,7 +76,7 @@ export function useDriverTracking() {
       isGpsAvailable.value = false
       
       // Log GPS denial
-      await logSessionEvent('gps_denied', { error: error.message })
+              // Session logging removed
       return false
     }
   }
@@ -371,7 +371,7 @@ export function useDriverTracking() {
         startBackgroundTracking()
       }
       
-      logSessionEvent('app_hidden')
+                // Session logging removed
     } else {
       console.log('📱 App visible - resuming foreground mode')
       const now = Date.now()
@@ -423,7 +423,7 @@ export function useDriverTracking() {
     appFocused.value = false
     lastBlurTime.value = Date.now()
     
-    logSessionEvent('app_blur')
+    // Session logging removed
   }
 
   const handleOnline = () => {
@@ -541,7 +541,6 @@ export function useDriverTracking() {
     // Skip if GPS accuracy is too poor
     if (gpsAccuracy.value > ACCURACY_THRESHOLD) {
       console.warn(`🍞 Breadcrumb skipped: Poor GPS accuracy ${gpsAccuracy.value}m`)
-      logSessionEvent('breadcrumb_skipped_accuracy', { accuracy: gpsAccuracy.value })
       return
     }
 
@@ -555,8 +554,7 @@ export function useDriverTracking() {
       battery_level: batteryLevel.value,
       signal_status: signalStatus.value,
       is_active_route: isActiveRoute.value,
-      synced: isOnline.value,
-      location_method: 'filtered' // Mark as filtered data
+      synced: isOnline.value
     }
 
     // Calculate speed and distance if we have a previous breadcrumb
@@ -583,10 +581,47 @@ export function useDriverTracking() {
 
     try {
       if (isOnline.value) {
-        await supabase
+        console.log('🧪 Attempting to insert breadcrumb:', breadcrumbData)
+        
+        const { data, error } = await supabase
           .from('gps_breadcrumbs')
           .insert(breadcrumbData)
+          .select()
+        
+        if (error) {
+          console.error('❌ BREADCRUMB INSERTION FAILED:')
+          console.error('📝 Error Code:', error.code)
+          console.error('📝 Error Message:', error.message)
+          console.error('📝 Error Details:', error.details)
+          console.error('📝 Error Hint:', error.hint)
+          console.error('📦 Data being inserted:', breadcrumbData)
+          console.error('👤 Driver ID:', driverId.value)
+          
+          // Log to localStorage for later analysis
+          const errorLog = {
+            timestamp: new Date().toISOString(),
+            error: {
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint
+            },
+            breadcrumbData,
+            driverId: driverId.value,
+            isOnline: isOnline.value,
+            gpsAccuracy: gpsAccuracy.value
+          }
+          
+          const errorLogs = JSON.parse(localStorage.getItem('breadcrumb_errors') || '[]')
+          errorLogs.push(errorLog)
+          localStorage.setItem('breadcrumb_errors', JSON.stringify(errorLogs))
+          
+          throw error
+        }
+        
+        console.log('✅ Breadcrumb inserted successfully:', data)
       } else {
+        console.log('📦 Storing breadcrumb locally (offline)')
         // Store locally for later sync
         const stored = JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]')
         stored.push(breadcrumbData)
@@ -599,7 +634,23 @@ export function useDriverTracking() {
       await checkGeofences(currentLocation.value.latitude, currentLocation.value.longitude)
       
     } catch (error) {
-      console.error('Error logging breadcrumb:', error)
+      console.error('❌ CRITICAL BREADCRUMB ERROR:', error)
+      console.error('📍 Location data:', currentLocation.value)
+      console.error('🎯 GPS accuracy:', gpsAccuracy.value)
+      console.error('🚗 Driver ID:', driverId.value)
+      console.error('🔄 Is active route:', isActiveRoute.value)
+      console.error('🌐 Is online:', isOnline.value)
+      
+      // Store failed breadcrumb locally for debugging
+      const failedBreadcrumb = {
+        ...breadcrumbData,
+        error: error.message,
+        failed_at: new Date().toISOString()
+      }
+      
+      const failed = JSON.parse(localStorage.getItem('failed_breadcrumbs') || '[]')
+      failed.push(failedBreadcrumb)
+      localStorage.setItem('failed_breadcrumbs', JSON.stringify(failed))
     }
   }
 
@@ -609,6 +660,9 @@ export function useDriverTracking() {
     console.log('📍 Starting breadcrumb tracking (30s interval)')
     isActiveRoute.value = true
     
+    // Save state to localStorage for persistence
+    saveTrackingState()
+    
     // Log initial breadcrumb immediately
     logBreadcrumb()
     
@@ -616,7 +670,7 @@ export function useDriverTracking() {
     breadcrumbInterval = setInterval(logBreadcrumb, 30000)
   }
 
-  const stopBreadcrumbTracking = () => {
+  const stopBreadcrumbTracking = async () => {
     if (breadcrumbInterval) {
       clearInterval(breadcrumbInterval)
       breadcrumbInterval = null
@@ -625,7 +679,25 @@ export function useDriverTracking() {
     console.log('🛑 Stopped breadcrumb tracking')
     isActiveRoute.value = false
     
-    // Log final breadcrumb
+    // Clear tracking state from localStorage
+    saveTrackingState()
+    
+    // Mark all active breadcrumbs as inactive in database
+    if (driverId.value) {
+      try {
+        await supabase
+          .from('gps_breadcrumbs')
+          .update({ is_active_route: false })
+          .eq('driver_id', driverId.value)
+          .eq('is_active_route', true)
+        
+        console.log('✅ Marked route as ended in database')
+      } catch (error) {
+        console.error('❌ Error ending route in database:', error)
+      }
+    }
+    
+    // Log final breadcrumb with inactive status
     logBreadcrumb()
   }
 
@@ -681,7 +753,7 @@ export function useDriverTracking() {
           sessionStats.value.totalDeliveries++
         }
       } else if (actionType === 'end_route') {
-        stopBreadcrumbTracking()
+        await stopBreadcrumbTracking()
         // Update session distance
         if (isWorkSessionActive.value) {
           sessionStats.value.totalDistance += totalDistance.value
@@ -725,34 +797,9 @@ export function useDriverTracking() {
     }
   }
 
-  const logSessionEvent = async (eventType, metadata = {}) => {
-    const sessionData = {
-      driver_id: driverId.value,
-      event_type: eventType,
-      timestamp: new Date().toISOString(),
-      metadata: {
-        ...metadata,
-        battery_level: batteryLevel.value,
-        signal_status: signalStatus.value,
-        gps_available: isGpsAvailable.value,
-        app_focused: appFocused.value
-      }
-    }
-
-    try {
-      if (isOnline.value && driverId.value) {
-        await supabase
-          .from('session_logs')
-          .insert(sessionData)
-      } else {
-        // Store locally for later sync
-        const stored = JSON.parse(localStorage.getItem('pending_session_logs') || '[]')
-        stored.push(sessionData)
-        localStorage.setItem('pending_session_logs', JSON.stringify(stored))
-      }
-    } catch (error) {
-      console.error('Error logging session event:', error)
-    }
+  // Session logging removed - not needed for basic GPS tracking
+  const logSessionEvent = () => {
+    // Stub function - session logging disabled
   }
 
   const uploadPhoto = async (file, actionType) => {
@@ -853,23 +900,7 @@ export function useDriverTracking() {
         }
       }
 
-      // Sync session logs
-      const storedSessionLogs = JSON.parse(localStorage.getItem('pending_session_logs') || '[]')
-      
-      for (const sessionLog of storedSessionLogs) {
-        try {
-          const { error } = await supabase
-            .from('session_logs')
-            .insert(sessionLog)
-          
-          if (!error) {
-            const remaining = storedSessionLogs.filter(l => l.timestamp !== sessionLog.timestamp)
-            localStorage.setItem('pending_session_logs', JSON.stringify(remaining))
-          }
-        } catch (syncError) {
-          console.error('Error syncing session log:', syncError)
-        }
-      }
+      // Session logs sync removed
 
       // Sync work sessions
       const storedWorkSessions = JSON.parse(localStorage.getItem('pending_work_sessions') || '[]')
@@ -895,6 +926,7 @@ export function useDriverTracking() {
         JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]').length +
         JSON.parse(localStorage.getItem('pending_geofence_events') || '[]').length +
         JSON.parse(localStorage.getItem('pending_work_sessions') || '[]').length
+        // pending_session_logs removed
       
       unsyncedLogs.value = totalUnsynced
     } catch (error) {
@@ -988,10 +1020,7 @@ export function useDriverTracking() {
             syncPendingLogs()
             break
             
-          case 'SYNC_SESSION_LOGS':
-            console.log('🔄 Service worker requesting session logs sync')
-            syncPendingLogs()
-            break
+          // SYNC_SESSION_LOGS removed
             
           case 'APP_BACKGROUNDED':
             console.log('📱 App went to background - service worker taking over')
@@ -1090,6 +1119,9 @@ export function useDriverTracking() {
       JSON.parse(localStorage.getItem('pending_work_sessions') || '[]').length
     
     unsyncedLogs.value = totalUnsynced
+    
+    // Load tracking state and check for active routes
+    loadTrackingState()
     
     // Fetch clients for geofencing
     fetchClients()
@@ -1327,6 +1359,134 @@ export function useDriverTracking() {
     cleanup()
   })
 
+  // Check for active routes and resume tracking
+  const checkAndResumeActiveRoute = async () => {
+    if (!driverId.value) return false
+    
+    try {
+      console.log('🔍 Checking for active routes on page load...')
+      
+      // Get the most recent breadcrumb for this driver
+      const { data: recentBreadcrumbs, error } = await supabase
+        .from('gps_breadcrumbs')
+        .select('*')
+        .eq('driver_id', driverId.value)
+        .eq('is_active_route', true)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+      
+      if (error) {
+        console.error('❌ Error checking active routes:', error)
+        return false
+      }
+      
+      if (recentBreadcrumbs && recentBreadcrumbs.length > 0) {
+        const recentBreadcrumb = recentBreadcrumbs[0]
+        const lastTimestamp = new Date(recentBreadcrumb.timestamp)
+        const timeSinceLastBreadcrumb = (Date.now() - lastTimestamp.getTime()) / (1000 * 60) // minutes
+        
+        console.log(`📍 Found active route from ${timeSinceLastBreadcrumb.toFixed(1)} minutes ago`)
+        
+        // If the last breadcrumb was within the last 2 hours, resume tracking
+        if (timeSinceLastBreadcrumb < 120) {
+          console.log('✅ Resuming GPS tracking from active route')
+          
+          // Set the tracking state
+          isActiveRoute.value = true
+          lastBreadcrumb.value = recentBreadcrumb
+          
+          // Save to localStorage for persistence
+          localStorage.setItem('gps_tracking_active', 'true')
+          localStorage.setItem('last_breadcrumb', JSON.stringify(recentBreadcrumb))
+          
+          // Start tracking immediately
+          if (!breadcrumbInterval) {
+            console.log('🔄 Restarting breadcrumb tracking (30s interval)')
+            breadcrumbInterval = setInterval(logBreadcrumb, 30000)
+            
+            // Log immediate breadcrumb to confirm tracking resumed
+            setTimeout(() => {
+              logBreadcrumb()
+            }, 2000) // Wait 2 seconds for GPS to be ready
+          }
+          
+          return true
+        } else {
+          console.log('⏰ Active route too old, not resuming (>2 hours)')
+          
+          // Mark old routes as inactive
+          await supabase
+            .from('gps_breadcrumbs')
+            .update({ is_active_route: false })
+            .eq('driver_id', driverId.value)
+            .eq('is_active_route', true)
+            .lt('timestamp', new Date(Date.now() - 2*60*60*1000).toISOString())
+          
+          return false
+        }
+      } else {
+        console.log('📍 No active routes found')
+        
+        // Clear any stale localStorage data
+        localStorage.removeItem('gps_tracking_active')
+        localStorage.removeItem('last_breadcrumb')
+        
+        return false
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking active routes:', error)
+      return false
+    }
+  }
+
+  // Enhanced initialization to check for active routes
+  const initializeDriverWithRouteCheck = async (userId) => {
+    try {
+      // First initialize the driver
+      const driverIdResult = await initializeDriver(userId)
+      
+      // Then check for active routes and resume if needed
+      await checkAndResumeActiveRoute()
+      
+      return driverIdResult
+    } catch (error) {
+      console.error('Error initializing driver with route check:', error)
+      throw error
+    }
+  }
+
+  // Save tracking state to localStorage
+  const saveTrackingState = () => {
+    if (isActiveRoute.value) {
+      localStorage.setItem('gps_tracking_active', 'true')
+      if (lastBreadcrumb.value) {
+        localStorage.setItem('last_breadcrumb', JSON.stringify(lastBreadcrumb.value))
+      }
+    } else {
+      localStorage.removeItem('gps_tracking_active')
+      localStorage.removeItem('last_breadcrumb')
+    }
+  }
+
+  // Load tracking state from localStorage
+  const loadTrackingState = () => {
+    const trackingActive = localStorage.getItem('gps_tracking_active')
+    const storedBreadcrumb = localStorage.getItem('last_breadcrumb')
+    
+    if (trackingActive === 'true') {
+      console.log('📱 Found saved tracking state - will check for active routes')
+      
+      if (storedBreadcrumb) {
+        try {
+          lastBreadcrumb.value = JSON.parse(storedBreadcrumb)
+        } catch (error) {
+          console.warn('⚠️ Could not parse stored breadcrumb:', error)
+        }
+      }
+    }
+  }
+
   return {
     // Existing State
     isGpsAvailable,
@@ -1356,7 +1516,7 @@ export function useDriverTracking() {
     requestGpsPermission,
     startLocationTracking,
     logDeliveryAction,
-    logSessionEvent,
+    // logSessionEvent removed
     syncPendingLogs,
     initializeDriver,
     startBreadcrumbTracking,
@@ -1369,6 +1529,12 @@ export function useDriverTracking() {
     endWorkSession,
     updateWorkedTime,
     getFormattedWorkTime,
-    loadExistingWorkSession
+    loadExistingWorkSession,
+
+    // New methods
+    checkAndResumeActiveRoute,
+    initializeDriverWithRouteCheck,
+    saveTrackingState,
+    loadTrackingState
   }
 } 
