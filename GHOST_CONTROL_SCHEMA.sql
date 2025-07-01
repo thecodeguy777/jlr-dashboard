@@ -105,8 +105,8 @@ CREATE POLICY "Admins can insert ghost commands" ON ghost_commands
     FOR INSERT WITH CHECK (
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE user_id = auth.uid() 
-            AND role IN ('admin', 'owner', 'manager')
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
         )
     );
 
@@ -119,12 +119,21 @@ CREATE POLICY "Drivers can read their ghost commands" ON ghost_commands
         )
     );
 
+CREATE POLICY "Drivers can update their ghost commands" ON ghost_commands
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM drivers 
+            WHERE drivers.id = ghost_commands.driver_id 
+            AND drivers.user_id = auth.uid()
+        )
+    );
+
 CREATE POLICY "Admins can read all ghost commands" ON ghost_commands
     FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE user_id = auth.uid() 
-            AND role IN ('admin', 'owner', 'manager')
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
         )
     );
 
@@ -132,16 +141,34 @@ CREATE POLICY "Admins can update ghost commands" ON ghost_commands
     FOR UPDATE USING (
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE user_id = auth.uid() 
-            AND role IN ('admin', 'owner', 'manager')
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
         )
     );
 
 -- Auto-tracking sessions - Drivers can read/insert their own, admins can read all
 ALTER TABLE auto_tracking_sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Drivers can manage their auto-tracking sessions" ON auto_tracking_sessions
-    FOR ALL USING (
+CREATE POLICY "Drivers can insert their auto-tracking sessions" ON auto_tracking_sessions
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM drivers 
+            WHERE drivers.id = driver_id 
+            AND drivers.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Drivers can read their auto-tracking sessions" ON auto_tracking_sessions
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM drivers 
+            WHERE drivers.id = auto_tracking_sessions.driver_id 
+            AND drivers.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Drivers can update their auto-tracking sessions" ON auto_tracking_sessions
+    FOR UPDATE USING (
         EXISTS (
             SELECT 1 FROM drivers 
             WHERE drivers.id = auto_tracking_sessions.driver_id 
@@ -153,8 +180,26 @@ CREATE POLICY "Admins can read all auto-tracking sessions" ON auto_tracking_sess
     FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE user_id = auth.uid() 
-            AND role IN ('admin', 'owner', 'manager')
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
+        )
+    );
+
+CREATE POLICY "Admins can insert auto-tracking sessions" ON auto_tracking_sessions
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
+        )
+    );
+
+CREATE POLICY "Admins can update auto-tracking sessions" ON auto_tracking_sessions
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
         )
     );
 
@@ -165,8 +210,8 @@ CREATE POLICY "Admins can manage notifications" ON admin_notifications
     FOR ALL USING (
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE user_id = auth.uid() 
-            AND role IN ('admin', 'owner', 'manager')
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
         )
     );
 
@@ -186,8 +231,8 @@ CREATE POLICY "Admins can read all movement events" ON movement_events
     FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE user_id = auth.uid() 
-            AND role IN ('admin', 'owner', 'manager')
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
         )
     );
 
@@ -207,8 +252,8 @@ CREATE POLICY "Admins can read all driver status" ON driver_status
     FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM user_profiles 
-            WHERE user_id = auth.uid() 
-            AND role IN ('admin', 'owner', 'manager')
+            WHERE id = auth.uid() 
+            AND role IN ('admin', 'owner', 'employee_admin')
         )
     );
 
