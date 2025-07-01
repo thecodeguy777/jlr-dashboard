@@ -1,4 +1,4 @@
-const CACHE_NAME = 'renewco-driver-v1.1.0'
+const CACHE_NAME = 'renewco-driver-v1.2.0'
 const STATIC_CACHE_URLS = [
   '/',
   '/driver',
@@ -8,7 +8,7 @@ const STATIC_CACHE_URLS = [
   '/manifest.json'
 ]
 
-const RUNTIME_CACHE = 'renewco-runtime-v1.1.0'
+const RUNTIME_CACHE = 'renewco-runtime-v1.2.0'
 
 // Background tracking state
 let backgroundTrackingActive = false
@@ -181,16 +181,20 @@ self.addEventListener('fetch', event => {
   const { request } = event
   const url = new URL(request.url)
   
+  // Skip non-GET requests for caching
+  if (request.method !== 'GET') {
+    event.respondWith(fetch(request))
+    return
+  }
+  
   // Handle API requests - try network first, fallback to cache
   if (url.pathname.includes('/rest/v1/') || url.pathname.includes('/auth/v1/')) {
     event.respondWith(
       fetch(request)
         .then(response => {
-          // Clone the response for caching
-          const responseClone = response.clone()
-          
-          // Cache successful responses
-          if (response.status === 200) {
+          // Only cache GET requests with successful responses
+          if (response.status === 200 && request.method === 'GET') {
+            const responseClone = response.clone()
             caches.open(RUNTIME_CACHE).then(cache => {
               cache.put(request, responseClone)
             })
@@ -243,7 +247,7 @@ self.addEventListener('fetch', event => {
           }
           
           return fetch(request).then(response => {
-            if (response.status === 200) {
+            if (response.status === 200 && request.method === 'GET') {
               const responseClone = response.clone()
               caches.open(RUNTIME_CACHE).then(cache => {
                 cache.put(request, responseClone)
@@ -262,7 +266,7 @@ self.addEventListener('fetch', event => {
       fetch(request)
         .then(response => {
           // Cache successful navigation responses
-          if (response.status === 200) {
+          if (response.status === 200 && request.method === 'GET') {
             const responseClone = response.clone()
             caches.open(RUNTIME_CACHE).then(cache => {
               cache.put(request, responseClone)
@@ -461,4 +465,196 @@ async function handlePeriodicBackgroundSync() {
   } catch (error) {
     console.error('Service Worker: Periodic sync error:', error)
   }
+}
+
+// Service Worker for PWA Push Notifications
+const urlsToCache = [
+  '/',
+  '/manifest.json',
+  '/assets/',
+  '/lib/supabase.js'
+]
+
+// Install event - cache resources
+self.addEventListener('install', (event) => {
+  console.log('🔧 Service Worker installing...')
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('📦 Opened cache')
+        return cache.addAll(urlsToCache)
+      })
+  )
+  self.skipWaiting()
+})
+
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  console.log('✅ Service Worker activating...')
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('🗑️ Deleting old cache:', cacheName)
+            return caches.delete(cacheName)
+          }
+        })
+      )
+    })
+  )
+  self.clients.claim()
+})
+
+// Fetch event - serve from cache, fallback to network
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        // Return cached version or fetch from network
+        return response || fetch(event.request)
+      })
+  )
+})
+
+// Push event - handle push notifications
+self.addEventListener('push', (event) => {
+  console.log('📱 Push notification received:', event)
+  
+  let notificationData = {
+    title: '📋 New Task Assigned',
+    body: 'You have a new task to complete',
+    icon: '/assets/renew-logo.png',
+    badge: '/assets/renew-logo.png',
+    tag: 'task-notification',
+    requireInteraction: true,
+    actions: [
+      {
+        action: 'view',
+        title: '👀 View Task',
+        icon: '/assets/renew-logo.png'
+      },
+      {
+        action: 'dismiss',
+        title: '❌ Dismiss'
+      }
+    ],
+    data: {
+      url: '/driver-dashboard',
+      taskId: null
+    }
+  }
+
+  // Parse push data if available
+  if (event.data) {
+    try {
+      const pushData = event.data.json()
+      notificationData = {
+        ...notificationData,
+        ...pushData
+      }
+    } catch (error) {
+      console.error('Error parsing push data:', error)
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(notificationData.title, notificationData)
+  )
+})
+
+// Notification click event
+self.addEventListener('notificationclick', (event) => {
+  console.log('🔔 Notification clicked:', event)
+  
+  event.notification.close()
+
+  if (event.action === 'dismiss') {
+    return
+  }
+
+  // Default action or 'view' action
+  const urlToOpen = event.notification.data?.url || '/driver-dashboard'
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Check if app is already open
+        for (const client of clientList) {
+          if (client.url.includes(urlToOpen) && 'focus' in client) {
+            return client.focus()
+          }
+        }
+        
+        // Open new window if app not open
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen)
+        }
+      })
+  )
+})
+
+// Background sync for offline task updates
+self.addEventListener('sync', (event) => {
+  console.log('🔄 Background sync triggered:', event.tag)
+  
+  if (event.tag === 'sync-task-updates') {
+    event.waitUntil(syncTaskUpdates())
+  }
+})
+
+// Function to sync pending task updates when back online
+async function syncTaskUpdates() {
+  try {
+    // This would sync any pending updates from IndexedDB
+    console.log('📤 Syncing pending task updates...')
+    
+    // Send message to main app to handle sync
+    const clients = await self.clients.matchAll()
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'SYNC_TASK_UPDATES',
+        timestamp: Date.now()
+      })
+    })
+    
+  } catch (error) {
+    console.error('❌ Error syncing task updates:', error)
+  }
+}
+
+// Message handler for communication with main app
+self.addEventListener('message', (event) => {
+  console.log('💬 Message received in SW:', event.data)
+  
+  if (event.data && event.data.type === 'SHOW_LOCAL_NOTIFICATION') {
+    showLocalNotification(event.data.payload)
+  }
+})
+
+// Function to show local notifications (triggered from main app)
+function showLocalNotification(payload) {
+  const notificationOptions = {
+    title: payload.title || '📋 Task Update',
+    body: payload.body || 'Task status has been updated',
+    icon: '/assets/renew-logo.png',
+    badge: '/assets/renew-logo.png',
+    tag: payload.tag || 'local-notification',
+    requireInteraction: true,
+    vibrate: [200, 100, 200], // Mobile vibration pattern
+    data: payload.data || {},
+    actions: [
+      {
+        action: 'view',
+        title: '👀 View',
+        icon: '/assets/renew-logo.png'
+      },
+      {
+        action: 'dismiss',
+        title: '❌ Dismiss'
+      }
+    ]
+  }
+
+  self.registration.showNotification(notificationOptions.title, notificationOptions)
 } 
