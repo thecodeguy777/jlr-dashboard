@@ -81,13 +81,15 @@ export function useDriverTracking() {
     maximumAge: 10000 // Accept older cached location
   }
 
-  // Movement detection thresholds
+  // Movement detection thresholds - TRAFFIC AWARE
   const MOVEMENT_CONFIG = {
-    speedThreshold: 15, // km/h - faster than walking
-    distanceThreshold: 100, // meters to confirm movement
-    timeWindow: 30, // seconds to confirm sustained movement
+    speedThreshold: 8, // km/h - lowered to catch heavy traffic (was 15)
+    trafficSpeedMin: 3, // km/h - minimum to be considered traffic movement  
+    distanceThreshold: 50, // meters to confirm movement (lowered for traffic)
+    timeWindow: 60, // seconds to confirm sustained movement (longer for traffic)
     accuracyRequired: 50, // GPS accuracy needed
-    stopDuration: 5 // minutes stopped before ending tracking
+    stopDuration: 10, // minutes stopped before ending tracking (longer for traffic jams)
+    trafficDetectionWindow: 300 // 5 minutes to detect traffic patterns
   }
 
   // Location filtering thresholds
@@ -113,19 +115,30 @@ export function useDriverTracking() {
       // Update current speed
       currentSpeed.value = speed
 
-      // Movement detected!
+      // TRAFFIC-AWARE Movement Detection!
       if (speed > MOVEMENT_CONFIG.speedThreshold && !isMoving.value) {
         console.log(`🚗 Movement detected: ${speed.toFixed(1)} km/h`)
         startMovementTracking(speed)
       }
       
-      // Still moving - update movement data
-      else if (speed > MOVEMENT_CONFIG.speedThreshold && isMoving.value) {
-        updateMovementData(speed, distance)
+      // TRAFFIC DETECTION: Slow but sustained movement
+      else if (speed >= MOVEMENT_CONFIG.trafficSpeedMin && speed <= MOVEMENT_CONFIG.speedThreshold && !isMoving.value) {
+        console.log(`🚦 Potential traffic detected: ${speed.toFixed(1)} km/h - checking pattern...`)
+        checkTrafficPattern(speed, distance)
       }
       
-      // Stopped moving
-      else if (speed < 5 && isMoving.value) {
+      // Still moving - update movement data
+      else if (speed > MOVEMENT_CONFIG.trafficSpeedMin && isMoving.value) {
+        updateMovementData(speed, distance)
+        
+        // Log traffic status
+        if (speed < MOVEMENT_CONFIG.speedThreshold) {
+          console.log(`🚦 Traffic movement: ${speed.toFixed(1)} km/h`)
+        }
+      }
+      
+      // Completely stopped (not even traffic crawl)
+      else if (speed < MOVEMENT_CONFIG.trafficSpeedMin && isMoving.value) {
         handleMovementStop()
       }
 
@@ -150,24 +163,30 @@ export function useDriverTracking() {
     }
   }
 
-  const startMovementTracking = async (initialSpeed) => {
+  const startMovementTracking = async (initialSpeed, detectionType = 'normal') => {
     isMoving.value = true
     movementStartTime.value = Date.now()
     
     // Auto-start breadcrumb tracking if not already active
     if (!isActiveRoute.value) {
-      console.log('🔄 Auto-starting breadcrumb tracking due to movement')
+      const trackingReason = detectionType === 'traffic_detected' ? 
+        '🚦 Auto-starting breadcrumb tracking due to TRAFFIC movement' :
+        '🔄 Auto-starting breadcrumb tracking due to movement'
+      
+      console.log(trackingReason)
       await startAutoTracking('movement_detected', {
         initialSpeed,
+        detectionType,
         detectionTime: new Date().toISOString()
       })
     }
 
-    // Notify admin of movement
+    // Notify admin of movement with traffic context
     notifyAdmin({
-      type: 'MOVEMENT_DETECTED',
+      type: detectionType === 'traffic_detected' ? 'TRAFFIC_MOVEMENT_DETECTED' : 'MOVEMENT_DETECTED',
       driver_id: driverId.value,
       speed: initialSpeed,
+      detection_type: detectionType,
       location: currentLocation.value,
       timestamp: new Date().toISOString(),
       work_session_active: isWorkSessionActive.value
@@ -184,12 +203,41 @@ export function useDriverTracking() {
     }
   }
 
+  // TRAFFIC DETECTION: Check for sustained slow movement patterns
+  const checkTrafficPattern = (speed, distance) => {
+    const now = Date.now()
+    
+    // Look at movement history for traffic patterns
+    const recentMovement = movementHistory.value.filter(entry => 
+      now - entry.timestamp <= MOVEMENT_CONFIG.trafficDetectionWindow * 1000
+    )
+    
+    if (recentMovement.length >= 3) {
+      // Calculate average speed and total distance over detection window
+      const avgSpeed = recentMovement.reduce((sum, entry) => sum + entry.speed, 0) / recentMovement.length
+      const totalDistance = recentMovement.reduce((sum, entry) => sum + (entry.distance || 0), 0)
+      
+      // Traffic pattern: sustained slow movement with significant distance
+      const isTrafficPattern = avgSpeed >= MOVEMENT_CONFIG.trafficSpeedMin && 
+                             avgSpeed <= MOVEMENT_CONFIG.speedThreshold && 
+                             totalDistance >= MOVEMENT_CONFIG.distanceThreshold
+      
+      if (isTrafficPattern) {
+        console.log(`🚦 TRAFFIC CONFIRMED: Avg speed ${avgSpeed.toFixed(1)} km/h over ${(totalDistance).toFixed(0)}m - starting tracking`)
+        startMovementTracking(avgSpeed, 'traffic_detected')
+      } else {
+        console.log(`⏳ Slow movement detected but not enough for traffic pattern (avg: ${avgSpeed.toFixed(1)} km/h, distance: ${totalDistance.toFixed(0)}m)`)
+      }
+    }
+  }
+
   const handleMovementStop = () => {
     console.log('🛑 Movement stopped, monitoring for continued stop...')
+    console.log(`⏱️ Will wait ${MOVEMENT_CONFIG.stopDuration} minutes before stopping tracking (traffic-aware)`)
     
-    // Wait 5 minutes before officially stopping tracking
+    // Wait longer before officially stopping tracking (traffic-aware: 10 minutes)
     setTimeout(() => {
-      if (currentSpeed.value < 5) {
+      if (currentSpeed.value < MOVEMENT_CONFIG.trafficSpeedMin) {
         const movementDuration = (Date.now() - movementStartTime.value) / 1000 / 60 // minutes
         console.log(`📍 Movement ended after ${movementDuration.toFixed(1)} minutes`)
         
@@ -201,6 +249,7 @@ export function useDriverTracking() {
           driver_id: driverId.value,
           duration_minutes: movementDuration,
           total_distance: totalDistance.value,
+          final_speed: currentSpeed.value,
           location: currentLocation.value,
           timestamp: new Date().toISOString()
         })
@@ -208,11 +257,14 @@ export function useDriverTracking() {
         // Stop auto-tracking if it was only triggered by movement
         if (autoTrackingMode.value && trackingTrigger.value === 'movement_detected') {
           setTimeout(() => {
-            if (currentSpeed.value < 5) {
+            if (currentSpeed.value < MOVEMENT_CONFIG.trafficSpeedMin) {
+              console.log('🔚 Ending movement-based tracking due to sustained stop')
               stopAutoTracking('movement_ended')
             }
-          }, 2 * 60 * 1000) // Wait additional 2 minutes
+          }, 2 * 60 * 1000) // Wait additional 2 minutes to be sure
         }
+      } else {
+        console.log(`🚦 Still moving at ${currentSpeed.value.toFixed(1)} km/h - continuing tracking`)
       }
     }, MOVEMENT_CONFIG.stopDuration * 60 * 1000)
   }
