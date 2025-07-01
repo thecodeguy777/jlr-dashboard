@@ -500,36 +500,73 @@ export function useDriverTracking() {
 
   // Enhanced breadcrumb logging with full schema support
   const logBreadcrumb = async (additionalData = {}) => {
-    if (!isGpsAvailable.value || !currentLocation.value || !isActiveRoute.value) {
-      console.log('🍞 Breadcrumb skipped: GPS unavailable or route inactive')
+    // ROBUST LOGGING: Always attempt to log, with detailed status
+    console.log('🍞 BREADCRUMB ATTEMPT:', {
+      gpsAvailable: isGpsAvailable.value,
+      hasLocation: !!currentLocation.value,
+      isActiveRoute: isActiveRoute.value,
+      accuracy: gpsAccuracy.value,
+      driverId: driverId.value,
+      isOnline: isOnline.value
+    })
+
+    // Check if we have minimum requirements
+    if (!driverId.value) {
+      console.error('❌ Breadcrumb FAILED: No driver ID')
       return
     }
 
-    if (gpsAccuracy.value > ACCURACY_THRESHOLD) {
-      console.warn(`🍞 Breadcrumb skipped: Poor GPS accuracy ${gpsAccuracy.value}m`)
-      return
+    if (!currentLocation.value) {
+      console.warn('⚠️ Breadcrumb skipped: No GPS location available yet')
+      // Try to get GPS location immediately
+      try {
+        await getQuickGpsLocation()
+        if (!currentLocation.value) {
+          console.error('❌ Breadcrumb FAILED: Could not get GPS location')
+          return
+        }
+      } catch (error) {
+        console.error('❌ Breadcrumb FAILED: GPS error:', error)
+        return
+      }
+    }
+
+    // Log breadcrumb even with poor accuracy - mark it as low accuracy
+    const isLowAccuracy = gpsAccuracy.value > 100
+    if (isLowAccuracy) {
+      console.warn(`⚠️ Breadcrumb logging with LOW accuracy: ${gpsAccuracy.value}m`)
     }
 
     const now = new Date()
-    // Full breadcrumb data (your database has all these columns!)
+    // ROBUST breadcrumb data - log everything we have
     const breadcrumbData = {
       driver_id: driverId.value,
       timestamp: now.toISOString(),
       latitude: currentLocation.value.latitude,
       longitude: currentLocation.value.longitude,
-      gps_accuracy: gpsAccuracy.value,
-      battery_level: batteryLevel.value,
-      signal_status: signalStatus.value,
-      is_active_route: isActiveRoute.value,
+      gps_accuracy: gpsAccuracy.value || 999, // Mark unknown accuracy as 999
+      battery_level: batteryLevel.value || null,
+      signal_status: signalStatus.value || 'unknown',
+      is_active_route: isActiveRoute.value || false, // Force to boolean
       synced: isOnline.value,
       // Advanced tracking fields
-      auto_tracking: autoTrackingMode.value,
-      tracking_trigger: trackingTrigger.value,
-      movement_detected: isMoving.value,
-      ghost_control_active: ghostControlActive.value,
+      auto_tracking: autoTrackingMode.value || false,
+      tracking_trigger: trackingTrigger.value || 'manual',
+      movement_detected: isMoving.value || false,
+      ghost_control_active: ghostControlActive.value || false,
+      // Mark if this is low accuracy
+      low_accuracy_warning: isLowAccuracy,
       // Merge any additional data
       ...additionalData
     }
+
+    console.log('🍞 BREADCRUMB DATA prepared:', {
+      lat: breadcrumbData.latitude?.toFixed(6),
+      lng: breadcrumbData.longitude?.toFixed(6),
+      accuracy: breadcrumbData.gps_accuracy,
+      trigger: breadcrumbData.tracking_trigger,
+      route_active: breadcrumbData.is_active_route
+    })
 
     // Calculate speed and distance if we have a previous breadcrumb
     if (lastBreadcrumb.value) {
@@ -552,27 +589,52 @@ export function useDriverTracking() {
 
     try {
       if (isOnline.value) {
+        console.log('💾 ATTEMPTING to save breadcrumb to database...')
+        
         const { data, error } = await supabase
           .from('gps_breadcrumbs')
           .insert(breadcrumbData)
           .select()
         
         if (error) {
+          console.error('❌ DATABASE ERROR saving breadcrumb:', error)
+          console.error('📋 Failed breadcrumb data:', breadcrumbData)
+          
+          // Still store locally as backup
+          const stored = JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]')
+          stored.push({ ...breadcrumbData, error: error.message })
+          localStorage.setItem('pending_breadcrumbs', JSON.stringify(stored))
+          console.log('📦 Stored failed breadcrumb locally for retry')
+          
           throw error
         }
         
-        console.log('✅ Enhanced GPS breadcrumb logged with speed/distance:', data)
+        console.log('✅ SUCCESS! Breadcrumb saved to database:', {
+          id: data[0]?.id,
+          timestamp: data[0]?.timestamp,
+          location: `${data[0]?.latitude?.toFixed(6)}, ${data[0]?.longitude?.toFixed(6)}`,
+          accuracy: `${data[0]?.gps_accuracy}m`,
+          trigger: data[0]?.tracking_trigger
+        })
       } else {
-        console.log('📦 Storing breadcrumb locally (offline)')
+        console.log('📶 OFFLINE - Storing breadcrumb locally')
         const stored = JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]')
         stored.push(breadcrumbData)
         localStorage.setItem('pending_breadcrumbs', JSON.stringify(stored))
+        console.log('📦 Offline breadcrumb stored, will sync when online')
       }
 
       lastBreadcrumb.value = breadcrumbData
       
     } catch (error) {
-      console.error('❌ Auto-tracking breadcrumb error:', error)
+      console.error('❌ CRITICAL BREADCRUMB ERROR:', error.message)
+      console.error('🔍 Error details:', error)
+      console.error('📋 Breadcrumb data that failed:', breadcrumbData)
+      
+      // For alpha testing - show user-friendly error
+      if (additionalData.showUserError) {
+        alert(`⚠️ GPS logging error: ${error.message}\n\nThis helps us debug the issue!`)
+      }
     }
   }
 
@@ -942,17 +1004,24 @@ export function useDriverTracking() {
       autoTrackingMode.value = true
       trackingTrigger.value = 'work_session_active'
       
-      // Start breadcrumb interval for alpha test visibility
+      // ROBUST breadcrumb tracking for alpha test visibility
       if (!breadcrumbInterval) {
-        logBreadcrumb({
+        // Log immediate breadcrumb for clock-in
+        console.log('🍞 LOGGING IMMEDIATE CLOCK-IN BREADCRUMB...')
+        await logBreadcrumb({
           trigger: 'work_session_active',
-          note: 'Clock-in breadcrumb for admin visibility'
+          note: 'Clock-in breadcrumb for admin visibility',
+          showUserError: true // Show errors to user for debugging
         })
         
-        breadcrumbInterval = setInterval(() => {
-          logBreadcrumb({
+        // Start regular interval
+        console.log('🍞 STARTING BREADCRUMB INTERVAL (every 30 seconds)...')
+        breadcrumbInterval = setInterval(async () => {
+          console.log('🍞 INTERVAL BREADCRUMB triggered...')
+          await logBreadcrumb({
             trigger: 'work_session_active',
-            note: 'Regular work session breadcrumb'
+            note: 'Regular work session breadcrumb',
+            showUserError: false // Don't spam user with regular breadcrumb errors
           })
         }, 30000) // Every 30 seconds
       }
@@ -1260,6 +1329,42 @@ export function useDriverTracking() {
     }
   }
 
+  // ALPHA TESTING: Manual GPS and breadcrumb test function
+  const testGpsAndBreadcrumb = async () => {
+    console.log('🧪 MANUAL GPS & BREADCRUMB TEST started...')
+    
+    try {
+      // Force GPS update
+      console.log('📍 Step 1: Getting fresh GPS location...')
+      const gpsSuccess = await getQuickGpsLocation()
+      
+      if (!gpsSuccess) {
+        alert('❌ GPS Test FAILED\n\nCould not get GPS location. Check location permissions.')
+        return false
+      }
+      
+      console.log('✅ Step 1 complete: GPS location obtained')
+      
+      // Force breadcrumb log
+      console.log('🍞 Step 2: Logging test breadcrumb...')
+      await logBreadcrumb({
+        trigger: 'manual_test',
+        note: 'Manual test breadcrumb - alpha testing',
+        showUserError: true
+      })
+      
+      console.log('✅ Step 2 complete: Test breadcrumb logged')
+      
+      alert(`✅ GPS & Breadcrumb Test SUCCESSFUL!\n\nLocation: ${currentLocation.value.latitude.toFixed(6)}, ${currentLocation.value.longitude.toFixed(6)}\nAccuracy: ±${gpsAccuracy.value}m\n\nCheck the console for detailed logs!`)
+      return true
+      
+    } catch (error) {
+      console.error('❌ GPS & Breadcrumb test failed:', error)
+      alert(`❌ GPS & Breadcrumb Test FAILED\n\nError: ${error.message}\n\nCheck the console for details.`)
+      return false
+    }
+  }
+
   // Cleanup function
   const cleanup = () => {
     if (watchId) {
@@ -1369,6 +1474,10 @@ export function useDriverTracking() {
     // NEW: Movement detection methods
     startMovementDetection,
     stopMovementDetection,
-    detectMovement
+    detectMovement,
+    
+    // NEW: Manual testing methods
+    logBreadcrumb,
+    testGpsAndBreadcrumb
   }
 } 

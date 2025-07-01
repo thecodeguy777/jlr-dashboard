@@ -78,7 +78,7 @@
           </div>
         </div>
 
-        <!-- Warnings or Issues -->
+                  <!-- Warnings or Issues -->
         <div v-if="getSystemWarnings().length > 0" class="mt-3 p-2 bg-yellow-600/20 border border-yellow-500/30 rounded-lg">
           <div class="flex items-center gap-1 mb-1">
             <span>⚠️</span>
@@ -88,6 +88,20 @@
             <div v-for="warning in getSystemWarnings()" :key="warning" class="text-xs text-yellow-300">
               • {{ warning }}
             </div>
+          </div>
+        </div>
+
+        <!-- ALPHA TESTING: Manual GPS Test Button -->
+        <div v-if="isWorkSessionActive" class="mt-3 p-2 bg-blue-600/20 border border-blue-500/30 rounded-lg">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-xs font-medium text-blue-200">🧪 Alpha Testing</div>
+              <div class="text-xs text-blue-300">Test GPS & breadcrumb logging</div>
+            </div>
+            <button @click="testGpsAndBreadcrumb" 
+              class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded transition">
+              🧪 Test GPS
+            </button>
           </div>
         </div>
       </div>
@@ -230,7 +244,9 @@ const {
   trackingTrigger,
   // Ghost control functionality
   connectToGhostControl,
-  enableGhostControl
+  enableGhostControl,
+  // Alpha testing functions
+  testGpsAndBreadcrumb
 } = useDriverTracking()
 
 // Task management composable
