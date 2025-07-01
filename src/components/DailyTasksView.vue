@@ -476,23 +476,7 @@ const updateDriverPresence = async () => {
   console.log('📡 Updating driver presence for driver:', driverId.value)
   
   try {
-    // Use the database function for proper upsert
-    const { data: functionData, error: functionError } = await supabase
-      .rpc('upsert_driver_presence', {
-        p_driver_id: driverId.value,
-        p_is_online: true,
-        p_device_id: 'web'
-      })
-    
-    if (!functionError) {
-      console.log('✅ Driver presence updated via function')
-      return
-    }
-    
-    console.warn('⚠️ Database function failed:', functionError.message)
-    console.log('Trying direct upsert...')
-    
-    // Fallback to direct upsert
+    // Try direct upsert with proper conflict handling
     const { data: upsertData, error: upsertError } = await supabase
       .from('driver_presence')
       .upsert({
@@ -500,15 +484,37 @@ const updateDriverPresence = async () => {
         is_online: true,
         last_seen: new Date().toISOString(),
         device_id: 'web'
+      }, {
+        onConflict: 'driver_id,device_id',
+        ignoreDuplicates: false
       })
       .select()
     
     if (!upsertError) {
-      console.log('✅ Driver presence updated via direct upsert:', upsertData)
+      console.log('✅ Driver presence updated via upsert:', upsertData)
       return
     }
     
-    console.error('❌ Direct upsert failed:', upsertError.message)
+    console.warn('⚠️ Upsert failed:', upsertError.message)
+    console.log('Trying update fallback...')
+    
+    // Fallback to update existing record
+    const { data: updateData, error: updateError } = await supabase
+      .from('driver_presence')
+      .update({
+        is_online: true,
+        last_seen: new Date().toISOString()
+      })
+      .eq('driver_id', driverId.value)
+      .eq('device_id', 'web')
+      .select()
+    
+    if (!updateError) {
+      console.log('✅ Driver presence updated via update:', updateData)
+      return
+    }
+    
+    console.error('❌ Update also failed:', updateError.message)
     console.log('Using activity fallback...')
     await updateDriverActivity()
     
@@ -653,12 +659,9 @@ onMounted(() => {
     console.warn('⚠️ No driver ID available for real-time setup')
   }
   
-  // Check if already clocked in (could persist this in localStorage)
-  const savedClockIn = localStorage.getItem('driver_clocked_in')
-  if (savedClockIn) {
-    isClockedIn.value = true
-    clockInTime.value = localStorage.getItem('driver_clock_time') || ''
-  }
+  // Check work session state from the main tracking system
+  // Note: Clock-in/out is now handled by the main DriverDashboard
+  // This component shows task management only
   
   // Add event listeners for browser/page events
   document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -681,16 +684,8 @@ watch(driverId, (newDriverId, oldDriverId) => {
   }
 }, { immediate: true })
 
-// Watch for clock in/out state changes
-watch(isClockedIn, (newValue) => {
-  if (newValue) {
-    localStorage.setItem('driver_clocked_in', 'true')
-    localStorage.setItem('driver_clock_time', clockInTime.value)
-  } else {
-    localStorage.removeItem('driver_clocked_in')
-    localStorage.removeItem('driver_clock_time')
-  }
-})
+// Note: Clock-in/out state is now managed by the main work session system
+// No need for separate localStorage management here
 
 // Handle page visibility and unload events
 const handleVisibilityChange = () => {

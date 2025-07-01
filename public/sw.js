@@ -1,4 +1,4 @@
-const CACHE_NAME = 'renewco-driver-v1.2.0'
+const CACHE_NAME = 'renewco-driver-v1.2.1'
 const STATIC_CACHE_URLS = [
   '/',
   '/driver',
@@ -8,7 +8,7 @@ const STATIC_CACHE_URLS = [
   '/manifest.json'
 ]
 
-const RUNTIME_CACHE = 'renewco-runtime-v1.2.0'
+const RUNTIME_CACHE = 'renewco-runtime-v1.2.1'
 
 // Background tracking state
 let backgroundTrackingActive = false
@@ -180,6 +180,11 @@ const storeBackgroundEvent = (eventType, data) => {
 self.addEventListener('fetch', event => {
   const { request } = event
   const url = new URL(request.url)
+  
+  // Skip unsupported schemes (chrome-extension, moz-extension, etc.)
+  if (!url.protocol.startsWith('http')) {
+    return
+  }
   
   // Skip non-GET requests for caching
   if (request.method !== 'GET') {
@@ -506,16 +511,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request)
-      })
-  )
-})
+// Duplicate fetch listener removed - using comprehensive one above
 
 // Push event - handle push notifications
 self.addEventListener('push', (event) => {

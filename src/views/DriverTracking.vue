@@ -515,6 +515,7 @@ const deliveryLogs = ref([])
 const drivers = ref([])
 const breadcrumbs = ref([])
 const geofenceEvents = ref([])
+const onlineDrivers = ref([]) // NEW: Online drivers from presence table
 const selectedTab = ref('live') // 'live', 'logs', 'breadcrumbs', 'geofences'
 
 // Route Viewer State
@@ -532,13 +533,15 @@ const stats = computed(() => {
     log.timestamp && log.timestamp.startsWith(today)
   ).length
 
+  // FIXED: Include driver_presence for online drivers
   const activeDrivers = new Set([
     ...deliveryLogs.value
       .filter(log => log.timestamp && new Date(log.timestamp) > new Date(Date.now() - 24*60*60*1000))
       .map(log => log.driver_id),
     ...breadcrumbs.value
       .filter(b => b.timestamp && new Date(b.timestamp) > new Date(Date.now() - 60*60*1000)) // Active in last hour
-      .map(b => b.driver_id)
+      .map(b => b.driver_id),
+    ...onlineDrivers.value.map(d => d.driver_id) // NEW: Include online drivers from presence
   ]).size
 
   const unsyncedLogs = deliveryLogs.value.filter(log => !log.synced).length +
@@ -715,7 +718,8 @@ const refreshData = async () => {
     await Promise.all([
       fetchDeliveryLogs(),
       fetchBreadcrumbs(),
-      fetchGeofenceEvents()
+      fetchGeofenceEvents(),
+      fetchOnlineDrivers() // NEW: Fetch online drivers
     ])
   } finally {
     loading.value = false
@@ -791,6 +795,39 @@ const fetchGeofenceEvents = async () => {
     geofenceEvents.value = data || []
   } catch (error) {
     console.error('Error fetching geofence events:', error)
+  }
+}
+
+// NEW: Fetch online drivers from presence table
+const fetchOnlineDrivers = async () => {
+  try {
+    console.log('🔄 Fetching online drivers from presence table...')
+    
+    const { data, error } = await supabase
+      .from('driver_presence')
+      .select(`
+        *,
+        drivers (
+          id,
+          name,
+          phone
+        )
+      `)
+      .eq('is_online', true)
+      .order('last_seen', { ascending: false })
+
+    if (error) throw error
+    
+    onlineDrivers.value = data || []
+    console.log('✅ Online drivers found:', onlineDrivers.value.length)
+    
+    // Log driver details for debugging
+    onlineDrivers.value.forEach(driver => {
+      console.log(`📱 ${driver.drivers?.name || 'Unknown'} - Last seen: ${driver.last_seen}`)
+    })
+    
+  } catch (error) {
+    console.error('Error fetching online drivers:', error)
   }
 }
 

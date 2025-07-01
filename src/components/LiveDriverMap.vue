@@ -182,18 +182,22 @@ const fetchLiveData = async () => {
   try {
     console.log('🔄 Fetching live driver data...')
     
-    // Get active drivers 
-    const { data: driversData, error: driversError } = await supabase
-      .from('drivers')
-      .select('id, name, phone, is_active')
-      .eq('is_active', true)
+    // FIXED: Get online drivers from driver_presence table with GPS coordinates
+    const { data: onlineDrivers, error: presenceError } = await supabase
+      .from('driver_presence')
+      .select(`
+        *,
+        drivers(id, name, phone, is_active)
+      `)
+      .eq('is_online', true)
+      .order('last_seen', { ascending: false })
 
-    if (driversError) {
-      console.error('Error fetching drivers:', driversError)
+    if (presenceError) {
+      console.error('Error fetching online drivers:', presenceError)
       return
     }
 
-    console.log('👥 Active drivers found:', driversData?.length || 0)
+    console.log('👥 Online drivers found:', onlineDrivers?.length || 0)
 
     // Get recent breadcrumbs for trails (last 30 minutes)
     const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
@@ -212,39 +216,28 @@ const fetchLiveData = async () => {
 
     console.log('📍 Recent breadcrumbs found:', breadcrumbsData?.length || 0)
 
-    // Get latest breadcrumb for each driver
-    const driverPositions = new Map()
-    
-    if (breadcrumbsData) {
-      breadcrumbsData.forEach(breadcrumb => {
-        const driverId = breadcrumb.driver_id
-        const existing = driverPositions.get(driverId)
-        
-        if (!existing || new Date(breadcrumb.timestamp) > new Date(existing.timestamp)) {
-          driverPositions.set(driverId, breadcrumb)
-        }
-      })
-    }
-
-    // Process drivers data with latest positions
-    activeDrivers.value = (driversData || []).map(driver => {
-      const latestBreadcrumb = driverPositions.get(driver.id)
+    // Process online drivers with their presence data (including GPS)
+    activeDrivers.value = (onlineDrivers || []).map(presence => {
+      const driver = presence.drivers
+      if (!driver) return null
+      
       return {
         id: driver.id,
         name: driver.name,
         phone: driver.phone,
-        isActive: latestBreadcrumb?.is_active_route || false,
-        latitude: latestBreadcrumb?.latitude,
-        longitude: latestBreadcrumb?.longitude,
-        lastUpdate: latestBreadcrumb?.timestamp,
-        currentSpeed: latestBreadcrumb?.speed_kmh,
-        gpsAccuracy: latestBreadcrumb?.gps_accuracy,
-        batteryLevel: latestBreadcrumb?.battery_level,
-        signalStatus: latestBreadcrumb?.signal_status
+        isActive: driver.is_active || false,
+        // FIXED: Use GPS coordinates from driver_presence table
+        latitude: presence.location_lat,
+        longitude: presence.location_lng,
+        lastUpdate: presence.last_seen,
+        currentSpeed: 0, // Not tracked in presence yet
+        gpsAccuracy: presence.gps_accuracy,
+        batteryLevel: presence.battery_level,
+        signalStatus: presence.signal_status
       }
-    }).filter(driver => driver.latitude && driver.longitude)
+    }).filter(driver => driver && driver.latitude && driver.longitude)
 
-    console.log('🚛 Drivers with positions:', activeDrivers.value.length)
+    console.log('🚛 Drivers with GPS coordinates:', activeDrivers.value.length)
 
     recentBreadcrumbs.value = breadcrumbsData || []
     lastUpdateTime.value = new Date().toLocaleTimeString()

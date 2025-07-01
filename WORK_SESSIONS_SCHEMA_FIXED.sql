@@ -1,3 +1,86 @@
+-- Create work_sessions table with proper schema
+-- This fixes the "null value in column id" error
+
+DROP TABLE IF EXISTS work_sessions CASCADE;
+
+CREATE TABLE work_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    driver_id UUID NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+    start_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    end_time TIMESTAMPTZ NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
+    total_hours DECIMAL(5,2) NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes for performance
+CREATE INDEX idx_work_sessions_driver_id ON work_sessions(driver_id);
+CREATE INDEX idx_work_sessions_status ON work_sessions(status);
+CREATE INDEX idx_work_sessions_start_time ON work_sessions(start_time);
+
+-- Create updated_at trigger
+CREATE OR REPLACE FUNCTION update_work_sessions_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_work_sessions_updated_at
+    BEFORE UPDATE ON work_sessions
+    FOR EACH ROW
+    EXECUTE FUNCTION update_work_sessions_updated_at();
+
+-- RLS Policies
+ALTER TABLE work_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Drivers can see their own work sessions
+CREATE POLICY "work_sessions_driver_access" ON work_sessions
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM drivers 
+            WHERE drivers.id = work_sessions.driver_id 
+            AND drivers.user_id = auth.uid()
+        )
+    );
+
+-- Admins can see all work sessions
+CREATE POLICY "work_sessions_admin_access" ON work_sessions
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE user_profiles.user_id = auth.uid() 
+            AND user_profiles.role = 'admin'
+        )
+    );
+
+-- Employee admins can see all work sessions
+CREATE POLICY "work_sessions_employee_admin_access" ON work_sessions
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE user_profiles.user_id = auth.uid() 
+            AND user_profiles.role = 'employee_admin'
+        )
+    );
+
+-- Grant permissions
+GRANT ALL ON work_sessions TO authenticated;
+GRANT ALL ON SEQUENCE work_sessions_id_seq TO authenticated;
+
+-- Insert test comment
+INSERT INTO work_sessions (driver_id, start_time, status) 
+VALUES (
+    (SELECT id FROM drivers LIMIT 1),
+    NOW(),
+    'active'
+) 
+ON CONFLICT DO NOTHING;
+
+COMMENT ON TABLE work_sessions IS 'Driver work sessions with proper auto-incrementing ID';
+
 -- Work Sessions Table (FIXED VERSION)
 -- Tracks driver work sessions from clock in to clock out
 CREATE TABLE IF NOT EXISTS work_sessions (
@@ -73,22 +156,6 @@ CREATE POLICY "Admins can view all work sessions" ON work_sessions
       AND role IN ('admin', 'owner')
     )
   );
-
--- Function to update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_work_sessions_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ language 'plpgsql';
-
--- Trigger to automatically update updated_at
-DROP TRIGGER IF EXISTS update_work_sessions_updated_at ON work_sessions;
-CREATE TRIGGER update_work_sessions_updated_at
-  BEFORE UPDATE ON work_sessions
-  FOR EACH ROW
-  EXECUTE FUNCTION update_work_sessions_updated_at();
 
 -- Example queries for manual payroll verification:
 
