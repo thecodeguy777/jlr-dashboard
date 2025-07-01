@@ -70,8 +70,15 @@ export function useDriverTracking() {
   // Enhanced GPS options for better accuracy
   const GPS_OPTIONS = {
     enableHighAccuracy: true,
-    timeout: 20000,
-    maximumAge: 5000
+    timeout: 15000, // Reduced timeout
+    maximumAge: 3000 // Use more recent cache
+  }
+
+  // Faster GPS options for clock-in process
+  const QUICK_GPS_OPTIONS = {
+    enableHighAccuracy: false, // Accept less accuracy for speed
+    timeout: 8000, // Much faster timeout
+    maximumAge: 10000 // Accept older cached location
   }
 
   // Movement detection thresholds
@@ -224,18 +231,10 @@ export function useDriverTracking() {
     
     // Start breadcrumbs immediately
     if (!breadcrumbInterval) {
-      logBreadcrumb({
-        auto_tracking: true,
-        trigger: trigger,
-        metadata: metadata
-      })
+      logBreadcrumb() // Initial breadcrumb
       
       breadcrumbInterval = setInterval(() => {
-        logBreadcrumb({
-          auto_tracking: true,
-          trigger: trigger,
-          movement_detected: isMoving.value
-        })
+        logBreadcrumb() // Regular breadcrumb
       }, 30000) // Every 30 seconds
     }
     
@@ -489,8 +488,8 @@ export function useDriverTracking() {
     // Implementation would involve geofencing logic
   }
 
-  // Enhanced breadcrumb logging with auto-tracking
-  const logBreadcrumb = async (additionalData = {}) => {
+  // SIMPLIFIED breadcrumb logging for alpha test
+  const logBreadcrumb = async () => {
     if (!isGpsAvailable.value || !currentLocation.value || !isActiveRoute.value) {
       console.log('🍞 Breadcrumb skipped: GPS unavailable or route inactive')
       return
@@ -502,6 +501,7 @@ export function useDriverTracking() {
     }
 
     const now = new Date()
+    // SIMPLIFIED: Only use columns that exist in database
     const breadcrumbData = {
       driver_id: driverId.value,
       timestamp: now.toISOString(),
@@ -511,33 +511,11 @@ export function useDriverTracking() {
       battery_level: batteryLevel.value,
       signal_status: signalStatus.value,
       is_active_route: isActiveRoute.value,
-      synced: isOnline.value,
-      // NEW: Auto-tracking fields
-      auto_tracking: autoTrackingMode.value,
-      tracking_trigger: trackingTrigger.value,
-      movement_detected: isMoving.value,
-      current_speed: currentSpeed.value,
-      ghost_control_active: ghostControlActive.value,
-      ...additionalData
+      synced: isOnline.value
     }
 
-    // Calculate speed and distance if we have a previous breadcrumb
-    if (lastBreadcrumb.value) {
-      const distance = calculateDistance(
-        lastBreadcrumb.value.latitude,
-        lastBreadcrumb.value.longitude,
-        currentLocation.value.latitude,
-        currentLocation.value.longitude
-      )
-
-      const timeSeconds = (now - new Date(lastBreadcrumb.value.timestamp)) / 1000
-      const speed = calculateSpeed(distance, timeSeconds)
-
-      breadcrumbData.distance_from_last = distance
-      breadcrumbData.speed_kmh = speed
-
-      totalDistance.value += distance
-    }
+    // SIMPLIFIED: Skip speed/distance calculation for alpha test
+    // (These columns may not exist in database yet)
 
     try {
       if (isOnline.value) {
@@ -550,7 +528,7 @@ export function useDriverTracking() {
           throw error
         }
         
-        console.log('✅ Auto-tracking breadcrumb logged:', data)
+        console.log('✅ GPS breadcrumb logged for admin visibility:', data)
       } else {
         console.log('📦 Storing breadcrumb locally (offline)')
         const stored = JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]')
@@ -687,6 +665,51 @@ export function useDriverTracking() {
     }
   }
 
+  // Quick GPS for clock-in - prioritizes speed over accuracy
+  const getQuickGpsLocation = async () => {
+    try {
+      if (!navigator.geolocation) {
+        throw new Error('Geolocation not supported')
+      }
+
+      console.log('⚡ Getting quick GPS location for clock-in...')
+      
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, QUICK_GPS_OPTIONS)
+      })
+
+      // Update location state immediately
+      updateLocation(position)
+      console.log('✅ Quick GPS location obtained:', {
+        lat: position.coords.latitude.toFixed(6),
+        lng: position.coords.longitude.toFixed(6),
+        accuracy: position.coords.accuracy
+      })
+      
+      return true
+    } catch (error) {
+      console.warn('⚠️ Quick GPS failed, trying regular GPS...', error.message)
+      
+      // Fallback to regular GPS
+      try {
+        const fallbackPosition = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            timeout: 5000,
+            maximumAge: 30000 // Accept very old cache as last resort
+          })
+        })
+        
+        updateLocation(fallbackPosition)
+        console.log('✅ Fallback GPS location obtained')
+        return true
+      } catch (fallbackError) {
+        console.error('❌ All GPS attempts failed:', fallbackError.message)
+        return false
+      }
+    }
+  }
+
   const startLocationTracking = () => {
     if (!navigator.geolocation || watchId) return
 
@@ -734,23 +757,339 @@ export function useDriverTracking() {
     }
   }
 
-  // Work Session Management (existing functions would be here)
-  const startWorkSession = async () => {
-    // Implementation for starting work session
-    console.log('🕐 Starting work session')
-    isWorkSessionActive.value = true
-    sessionStartTime.value = new Date().toISOString()
+  // Update driver presence with current GPS location
+  const updateDriverPresenceWithLocation = async (isOnlineStatus = true) => {
+    if (!driverId.value) {
+      console.warn('⚠️ Cannot update presence: Driver ID not available')
+      return
+    }
     
-    return { success: true }
+    try {
+      const gpsData = {
+        latitude: currentLocation.value?.latitude || null,
+        longitude: currentLocation.value?.longitude || null,
+        accuracy: gpsAccuracy.value || null
+      }
+
+      console.log('📍 Updating driver presence with GPS:', {
+        driver: driverId.value,
+        online: isOnlineStatus,
+        hasGPS: !!(gpsData.latitude && gpsData.longitude),
+        accuracy: gpsData.accuracy,
+        battery: batteryLevel.value,
+        signal: signalStatus.value
+      })
+      
+      // Try direct upsert with proper conflict handling
+      const { data: upsertData, error: upsertError } = await supabase
+        .from('driver_presence')
+        .upsert({
+          driver_id: driverId.value,
+          is_online: isOnlineStatus,
+          last_seen: new Date().toISOString(),
+          device_id: 'web',
+          location_lat: gpsData.latitude,
+          location_lng: gpsData.longitude,
+          gps_accuracy: gpsData.accuracy,
+          battery_level: batteryLevel.value || null,
+          signal_status: signalStatus.value || 'unknown'
+        }, {
+          onConflict: 'driver_id,device_id', // Handle the unique constraint properly
+          ignoreDuplicates: false // Update existing records
+        })
+        .select()
+      
+      if (upsertError) {
+        console.error('❌ Driver presence upsert failed:', upsertError)
+        
+        // Final fallback: try updating existing record
+        const { data: updateData, error: updateError } = await supabase
+          .from('driver_presence')
+          .update({
+            is_online: isOnlineStatus,
+            last_seen: new Date().toISOString(),
+            location_lat: gpsData.latitude,
+            location_lng: gpsData.longitude,
+            gps_accuracy: gpsData.accuracy,
+            battery_level: batteryLevel.value || null,
+            signal_status: signalStatus.value || 'unknown'
+          })
+          .eq('driver_id', driverId.value)
+          .eq('device_id', 'web')
+          .select()
+        
+        if (updateError) {
+          console.error('❌ Update fallback also failed:', updateError)
+        } else {
+          console.log('✅ Driver presence updated via UPDATE with GPS')
+        }
+      } else {
+        console.log('✅ Driver presence updated via UPSERT with GPS coordinates')
+      }
+      
+    } catch (error) {
+      console.error('❌ Unexpected error updating driver presence:', error)
+    }
+  }
+
+  // Work Session Management - DATABASE (SIMPLIFIED)
+  const startWorkSession = async () => {
+    if (!driverId.value) {
+      throw new Error('Driver ID not available')
+    }
+
+    console.log('🕐 Starting work session for driver:', driverId.value)
+    
+    try {
+      // Save work session to database with GPS coordinates
+      const sessionData = {
+        driver_id: driverId.value.toString(), // Convert to TEXT
+        start_time: new Date().toISOString(),
+        status: 'active',
+        // Capture GPS location at clock-in
+        start_latitude: currentLocation.value?.latitude || null,
+        start_longitude: currentLocation.value?.longitude || null,
+        start_gps_accuracy: gpsAccuracy.value || null
+      }
+
+      console.log('📍 Clock-in location captured:', {
+        lat: sessionData.start_latitude,
+        lng: sessionData.start_longitude,
+        accuracy: sessionData.start_gps_accuracy
+      })
+
+      const { data, error } = await supabase
+        .from('work_sessions')
+        .insert(sessionData)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Database error:', error)
+        throw error
+      }
+
+      // Update local state
+      isWorkSessionActive.value = true
+      sessionStartTime.value = sessionData.start_time
+      currentWorkSession.value = data
+
+      console.log('✅ Work session started with GPS location saved to database:', data.id)
+      
+      // FIXED: Log action to delivery_logs for admin visibility
+      try {
+        await supabase
+          .from('delivery_logs')
+          .insert({
+            driver_id: driverId.value,
+            action_type: 'start_route',
+            timestamp: sessionData.start_time,
+            latitude: sessionData.start_latitude,
+            longitude: sessionData.start_longitude,
+            gps_accuracy: sessionData.start_gps_accuracy,
+            note: 'Driver clocked in - work session started',
+            battery_level: batteryLevel.value,
+            signal_status: signalStatus.value || 'unknown',
+            synced: true
+          })
+        console.log('📝 Clock-in action logged for admin visibility')
+      } catch (logError) {
+        console.warn('⚠️ Could not log start action (non-critical):', logError)
+      }
+      
+      // Save to localStorage as backup
+      localStorage.setItem('active_work_session', JSON.stringify(data))
+      
+      // IMPORTANT: Also immediately update driver presence with current location
+      await updateDriverPresenceWithLocation()
+      
+      // FIXED: Start breadcrumb tracking when clocking in (not just when moving)
+      console.log('🍞 Starting breadcrumb tracking for clocked-in driver')
+      isActiveRoute.value = true
+      autoTrackingMode.value = true
+      trackingTrigger.value = 'work_session_active'
+      
+      // Start breadcrumb interval for alpha test visibility
+      if (!breadcrumbInterval) {
+        logBreadcrumb() // Initial breadcrumb
+        
+        breadcrumbInterval = setInterval(() => {
+          logBreadcrumb() // Regular breadcrumb every 30 seconds
+        }, 30000) // Every 30 seconds
+      }
+      
+      return { success: true, sessionId: data.id }
+    } catch (error) {
+      console.error('❌ Failed to start work session:', error)
+      throw error
+    }
   }
 
   const endWorkSession = async () => {
-    // Implementation for ending work session
-    console.log('🕐 Ending work session')
-    isWorkSessionActive.value = false
-    sessionEndTime.value = new Date().toISOString()
+    if (!currentWorkSession.value) {
+      console.warn('⚠️ No active work session to end')
+      return { success: false, error: 'No active session' }
+    }
+
+    console.log('🕐 Ending work session:', currentWorkSession.value.id)
     
-    return { success: true, totalHours: '8.5' }
+    try {
+      const endTime = new Date().toISOString()
+      const sessionDuration = new Date(endTime) - new Date(currentWorkSession.value.start_time)
+      const totalHours = (sessionDuration / (1000 * 60 * 60)).toFixed(2)
+
+      // Update work session in database with GPS coordinates
+      const { data, error } = await supabase
+        .from('work_sessions')
+        .update({
+          end_time: endTime,
+          status: 'completed',
+          total_hours: totalHours,
+          // Capture GPS location at clock-out
+          end_latitude: currentLocation.value?.latitude || null,
+          end_longitude: currentLocation.value?.longitude || null,
+          end_gps_accuracy: gpsAccuracy.value || null
+        })
+        .eq('id', currentWorkSession.value.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Database error:', error)
+        throw error
+      }
+
+      console.log('📍 Clock-out location captured:', {
+        lat: currentLocation.value?.latitude,
+        lng: currentLocation.value?.longitude,
+        accuracy: gpsAccuracy.value
+      })
+
+      // Update local state
+      isWorkSessionActive.value = false
+      sessionEndTime.value = endTime
+      currentWorkSession.value = null
+
+      console.log('✅ Work session ended with GPS location saved to database')
+      
+      // FIXED: Log action to delivery_logs for admin visibility
+      try {
+        await supabase
+          .from('delivery_logs')
+          .insert({
+            driver_id: driverId.value,
+            action_type: 'end_route',
+            timestamp: endTime,
+            latitude: currentLocation.value?.latitude,
+            longitude: currentLocation.value?.longitude,
+            gps_accuracy: gpsAccuracy.value,
+            note: `Driver clocked out - work session completed (${totalHours} hours)`,
+            battery_level: batteryLevel.value,
+            signal_status: signalStatus.value || 'unknown',
+            synced: true
+          })
+        console.log('📝 Clock-out action logged for admin visibility')
+      } catch (logError) {
+        console.warn('⚠️ Could not log end action (non-critical):', logError)
+      }
+      
+      // Clear localStorage backup
+      localStorage.removeItem('active_work_session')
+      
+      // FIXED: Stop breadcrumb tracking when clocking out
+      console.log('🍞 Stopping breadcrumb tracking for clocked-out driver')
+      if (breadcrumbInterval) {
+        clearInterval(breadcrumbInterval)
+        breadcrumbInterval = null
+      }
+      
+      isActiveRoute.value = false
+      autoTrackingMode.value = false
+      trackingTrigger.value = null
+      
+      // Mark breadcrumbs as inactive in database
+      try {
+        await supabase
+          .from('gps_breadcrumbs')
+          .update({ is_active_route: false })
+          .eq('driver_id', driverId.value)
+          .eq('is_active_route', true)
+        console.log('✅ Marked route as ended in database')
+      } catch (error) {
+        console.warn('⚠️ Could not mark route as ended (non-critical):', error)
+      }
+      
+      // Update driver presence to offline after clock-out
+      await updateDriverPresenceWithLocation(false)
+      
+      return { success: true, totalHours }
+    } catch (error) {
+      console.error('❌ Failed to end work session:', error)
+      throw error
+    }
+  }
+
+  // Load active work session on initialization
+  const loadActiveWorkSession = async () => {
+    if (!driverId.value) return
+
+    console.log('🔍 Loading active work session for driver:', driverId.value)
+    
+    try {
+      // Check database for active work session (using TEXT driver_id)
+      const { data, error } = await supabase
+        .from('work_sessions')
+        .select('*')
+        .eq('driver_id', driverId.value.toString())
+        .eq('status', 'active')
+        .order('start_time', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) throw error
+
+      if (data) {
+        // Active session found - restore state
+        isWorkSessionActive.value = true
+        sessionStartTime.value = data.start_time
+        currentWorkSession.value = data
+        
+        console.log('✅ Active work session restored:', data.id)
+        console.log('📅 Session started at:', new Date(data.start_time).toLocaleString())
+        
+        // Update localStorage backup
+        localStorage.setItem('active_work_session', JSON.stringify(data))
+      } else {
+        // No active session - check localStorage backup
+        const backup = localStorage.getItem('active_work_session')
+        if (backup) {
+          console.log('⚠️ No DB session but found localStorage backup - clearing it')
+          localStorage.removeItem('active_work_session')
+        }
+        
+        isWorkSessionActive.value = false
+        sessionStartTime.value = null
+        currentWorkSession.value = null
+        console.log('ℹ️ No active work session found')
+      }
+    } catch (error) {
+      console.error('❌ Failed to load work session:', error)
+      
+      // Fallback to localStorage if database fails
+      const backup = localStorage.getItem('active_work_session')
+      if (backup) {
+        try {
+          const sessionData = JSON.parse(backup)
+          isWorkSessionActive.value = true
+          sessionStartTime.value = sessionData.start_time
+          currentWorkSession.value = sessionData
+          console.log('📦 Restored from localStorage backup')
+        } catch (parseError) {
+          console.error('❌ Failed to parse localStorage backup:', parseError)
+          localStorage.removeItem('active_work_session')
+        }
+      }
+    }
   }
 
   const getFormattedWorkTime = () => {
@@ -788,7 +1127,13 @@ export function useDriverTracking() {
   const initializeDriverWithRouteCheck = async (userId) => {
     try {
       const driverIdResult = await initializeDriver(userId)
-      // Additional initialization logic would go here
+      
+      // Ensure driverId is set before returning
+      if (driverIdResult) {
+        driverId.value = driverIdResult
+        console.log('✅ Driver ID set for work session loading:', driverIdResult)
+      }
+      
       return driverIdResult
     } catch (error) {
       console.error('Error initializing driver with route check:', error)
@@ -965,16 +1310,19 @@ export function useDriverTracking() {
     
     // Methods
     requestGpsPermission,
+    getQuickGpsLocation,
     startLocationTracking,
     initializeDriverWithRouteCheck,
     startWorkSession,
     endWorkSession,
+    loadActiveWorkSession,
     getFormattedWorkTime,
     
     // NEW: Auto-tracking methods
     startAutoTracking,
     stopAutoTracking,
     enableGhostControl,
+    connectToGhostControl,
     sendGhostCommand,
     notifyAdmin,
     

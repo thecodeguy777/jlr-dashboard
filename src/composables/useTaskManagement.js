@@ -141,6 +141,25 @@ export function useTaskManagement() {
       }
       
       console.log(`📝 Task start ${result.synced ? 'synced' : 'queued'}: ${task.task_title}`)
+      
+      // FIXED: Log action to delivery_logs for admin visibility
+      try {
+        await supabase
+          .from('delivery_logs')
+          .insert({
+            driver_id: task.driver_id,
+            action_type: 'arrived',
+            timestamp: updateData.started_at,
+            latitude: null, // GPS will be added by driver dashboard
+            longitude: null,
+            note: `Started delivery: ${task.task_title}`,
+            synced: true
+          })
+        console.log('📝 Task start action logged for admin visibility')
+      } catch (logError) {
+        console.warn('⚠️ Could not log task start action (non-critical):', logError)
+      }
+      
       return { ...task, ...updateData }
       
     } catch (error) {
@@ -183,6 +202,26 @@ export function useTaskManagement() {
       }
       
       console.log(`✅ Task completion ${result.synced ? 'synced' : 'queued'}: ${task.task_title}`)
+      
+      // FIXED: Log action to delivery_logs for admin visibility
+      try {
+        await supabase
+          .from('delivery_logs')
+          .insert({
+            driver_id: task.driver_id,
+            action_type: 'delivered',
+            timestamp: updateData.completed_at,
+            latitude: completionData.completion_location?.lat || null,
+            longitude: completionData.completion_location?.lng || null,
+            gps_accuracy: completionData.completion_location?.accuracy || null,
+            note: `Completed delivery: ${task.task_title}${completionData.completion_notes ? ` - ${completionData.completion_notes}` : ''}`,
+            synced: true
+          })
+        console.log('📝 Task completion action logged for admin visibility')
+      } catch (logError) {
+        console.warn('⚠️ Could not log task completion action (non-critical):', logError)
+      }
+      
       return { ...task, ...updateData }
       
     } catch (error) {

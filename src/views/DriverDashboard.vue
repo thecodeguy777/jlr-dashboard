@@ -8,53 +8,38 @@
       </button>
     </div>
 
-    <!-- GPS Permission Modal -->
-    <div v-if="showGpsModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-2xl p-8 max-w-md w-full text-center">
-        <div class="text-6xl mb-4">📍</div>
-        <h2 class="text-2xl font-bold mb-4 text-gray-800">Enable GPS</h2>
-        <p class="text-lg text-gray-600 mb-6">We need your location for accurate tracking</p>
-        <div class="space-y-3">
-          <button @click="requestGps" class="w-full bg-blue-600 text-white py-4 rounded-xl text-xl font-medium">
-            Enable GPS
-          </button>
-          <button @click="forceCloseModal" class="w-full bg-gray-300 text-gray-700 py-3 rounded-xl text-lg">
-            Continue Without GPS
-          </button>
-        </div>
+    <!-- SIMPLIFIED: GPS Status Bar (No blocking modal) -->
+    <div v-if="!isGpsAvailable && isWorkSessionActive" class="bg-yellow-600/20 border border-yellow-500/30 rounded-lg p-3 mx-4 mb-4">
+      <div class="flex items-center gap-2">
+        <div class="animate-pulse">📍</div>
+        <div class="text-sm text-yellow-200">Getting your location... This helps track your work accurately.</div>
       </div>
     </div>
 
     <div class="p-4 max-w-md mx-auto space-y-4">
-      <!-- MASTER STATUS CARD -->
-      <div class="bg-white/10 rounded-2xl p-6 text-center">
-        <!-- Work Status -->
-        <div class="flex items-center justify-center gap-3 mb-4">
-          <div class="text-3xl">{{ isWorkSessionActive ? '🟢' : '🔴' }}</div>
-          <div>
-            <div class="text-white text-xl font-bold">{{ isWorkSessionActive ? 'WORKING' : 'OFF WORK' }}</div>
-            <div class="text-gray-300">
-              {{ isWorkSessionActive ? getFormattedWorkTime() : 'Tap Clock In to start' }}
-            </div>
-          </div>
+      <!-- SIMPLIFIED MASTER STATUS CARD -->
+      <div class="bg-white/10 rounded-2xl p-8 text-center">
+        <!-- Status Icon & Text -->
+        <div class="text-8xl mb-4">{{ getStatusIcon() }}</div>
+        <div class="text-2xl font-bold text-white mb-2">{{ getStatusText() }}</div>
+        <div class="text-gray-300 mb-6">{{ getStatusSubtext() }}</div>
+        
+        <!-- Work Time (when working) -->
+        <div v-if="isWorkSessionActive" class="bg-white/10 rounded-lg p-3 mb-6">
+          <div class="text-sm text-gray-300">Work Time Today</div>
+          <div class="text-2xl font-bold text-orange-400">{{ getFormattedWorkTime() }}</div>
         </div>
         
-        <!-- Clock In/Out Button -->
-        <button v-if="!isWorkSessionActive"
-                @click="clockIn" 
-                class="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl text-xl font-bold mb-4">
-          🕐 CLOCK IN - START WORK
+        <!-- PRIMARY ACTION BUTTON -->
+        <button @click="primaryAction" 
+                :class="getPrimaryButtonClass()"
+                class="w-full py-4 rounded-xl text-xl font-bold transition-colors">
+          {{ getPrimaryButtonText() }}
         </button>
         
-        <!-- Current Status (when working) -->
-        <div v-if="isWorkSessionActive" class="border-t border-white/10 pt-4">
-          <div class="text-lg font-bold text-white mb-2">{{ getCurrentStatusText() }}</div>
-          <div class="text-gray-300 mb-3">{{ getCurrentSubStatusText() }}</div>
-          
-          <!-- Task Progress -->
-          <div v-if="todayTasks.length > 0" class="text-sm text-gray-400">
-            {{ completedTasks.length }} of {{ todayTasks.length }} deliveries completed
-          </div>
+        <!-- Simple Progress (when working) -->
+        <div v-if="isWorkSessionActive && todayTasks.length > 0" class="mt-4 text-sm text-gray-400">
+          📦 {{ completedTasks.length }} of {{ todayTasks.length }} deliveries completed
         </div>
       </div>
 
@@ -77,57 +62,7 @@
           </button>
         </div>
 
-        <!-- Task Management -->
-        <div v-else class="space-y-3">
-          <!-- Current Task Card -->
-          <div v-if="currentTask" class="bg-blue-600/20 border border-blue-500/30 rounded-2xl p-6">
-            <div class="text-center mb-4">
-              <div class="text-3xl mb-2">🎯</div>
-              <div class="text-xl font-bold text-white">Current Delivery</div>
-              <div class="text-blue-300">{{ currentTask.destination_name || 'Customer' }}</div>
-              <div class="text-sm text-gray-300">{{ currentTask.destination_address || currentTask.task_title }}</div>
-            </div>
-            
-            <!-- Task Actions -->
-            <div class="space-y-2">
-              <button v-if="currentTask.status === 'pending'"
-                      @click="startTask(currentTask)"
-                      :disabled="!canPerformActions"
-                      class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white py-3 rounded-lg font-medium transition-colors">
-                🚀 Start Delivery
-              </button>
-              
-              <button v-if="currentTask.status === 'in_progress'"
-                      @click="completeTask(currentTask)"
-                      :disabled="!canPerformActions"
-                      class="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 text-white py-3 rounded-lg font-medium transition-colors">
-                ✅ Mark as Delivered
-              </button>
-              
-              <button v-if="currentTask.status === 'in_progress'"
-                      @click="navigateToTask(currentTask)"
-                      class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium transition-colors">
-                🗺️ Open in Maps
-              </button>
-            </div>
-          </div>
-
-          <!-- All Tasks Completed -->
-          <div v-if="!currentTask && completedTasks.length === todayTasks.length" class="bg-green-600/20 border border-green-500/30 rounded-2xl p-6 text-center">
-            <div class="text-4xl mb-3">🎉</div>
-            <div class="text-xl font-bold text-white mb-2">All Deliveries Complete!</div>
-            <div class="text-green-300 mb-4">Great work today!</div>
-            <button @click="clockOut" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-              🕐 Clock Out
-            </button>
-          </div>
-        </div>
-
-        <!-- End Work Day Button -->
-        <button v-if="canEndWorkDay()" @click="clockOut"
-                class="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-medium transition-colors">
-          🕐 Clock Out - End Work Day
-        </button>
+        <!-- SIMPLIFIED: No redundant task cards - main button handles everything -->
       </div>
 
 
@@ -197,6 +132,7 @@ const {
   totalDistance,
   clients,
   requestGpsPermission,
+  getQuickGpsLocation,
   startLocationTracking,
   syncPendingLogs,
   initializeDriverWithRouteCheck,
@@ -208,7 +144,11 @@ const {
   sessionStats,
   startWorkSession,
   endWorkSession,
-  getFormattedWorkTime
+  loadActiveWorkSession,
+  getFormattedWorkTime,
+  // NEW: Ghost control functionality
+  connectToGhostControl,
+  enableGhostControl
 } = useDriverTracking()
 
 // Task management composable
@@ -239,8 +179,7 @@ const {
   getSyncStatus
 } = useSyncManager()
 
-// Local state
-const showGpsModal = ref(false)
+// Local state  
 const driverName = ref('')
 const isTaskListExpanded = ref(false)
 
@@ -257,31 +196,57 @@ const taskProgress = computed(() => {
   return getRouteProgress(todayTasks.value)
 })
 
-// Simplified UX methods
-const getCurrentStatusText = () => {
-  if (!isWorkSessionActive.value) return 'Not Working'
+// SIMPLIFIED UX - Single Action Logic
+const getStatusIcon = () => {
+  if (!isWorkSessionActive.value) return '🔴'
+  if (currentTask.value?.status === 'in_progress') return '🚚'
+  if (todayTasks.value.length === 0) return '⏳'
+  if (completedTasks.value.length === todayTasks.value.length) return '🎉'
+  return '🟢'
+}
+
+const getStatusText = () => {
+  if (!isWorkSessionActive.value) return 'Ready to Start Work'
+  if (currentTask.value?.status === 'in_progress') return 'On Delivery'
   if (todayTasks.value.length === 0) return 'Waiting for Tasks'
-  if (currentTask.value) {
-    if (currentTask.value.status === 'pending') return 'Ready for Next Delivery'
-    if (currentTask.value.status === 'in_progress') return 'Delivery in Progress'
-  }
-  if (completedTasks.value.length === todayTasks.value.length) return 'All Deliveries Complete'
+  if (completedTasks.value.length === todayTasks.value.length) return 'All Done!'
   return 'Working'
 }
 
-const getCurrentSubStatusText = () => {
-  if (!isWorkSessionActive.value) return 'Clock in to start your shift'
-  if (todayTasks.value.length === 0) return 'Check back for new assignments'
-  if (currentTask.value) {
-    if (currentTask.value.status === 'pending') {
-      return `Next: ${currentTask.value.destination_name || 'Customer delivery'}`
-    }
-    if (currentTask.value.status === 'in_progress') {
-      return `Delivering to ${currentTask.value.destination_name || 'customer'}`
-    }
-  }
-  if (completedTasks.value.length === todayTasks.value.length) return 'Ready to clock out'
+const getStatusSubtext = () => {
+  if (!isWorkSessionActive.value) return 'Tap the button below to clock in'
+  if (currentTask.value?.status === 'in_progress') return `Delivering to ${currentTask.value.destination_name || 'customer'}`
+  if (todayTasks.value.length === 0) return 'New tasks will appear here automatically'
+  if (completedTasks.value.length === todayTasks.value.length) return 'Great work today! Ready to clock out'
+  if (currentTask.value) return `Next: ${currentTask.value.destination_name || 'delivery'}`
   return 'Keep up the great work!'
+}
+
+const getPrimaryButtonText = () => {
+  if (!isWorkSessionActive.value) return '🕐 START WORK'
+  if (currentTask.value?.status === 'pending') return '🚀 START DELIVERY'
+  if (currentTask.value?.status === 'in_progress') return '✅ MARK DELIVERED'
+  if (completedTasks.value.length === todayTasks.value.length) return '🕐 END WORK'
+  return '🕐 END WORK'
+}
+
+const getPrimaryButtonClass = () => {
+  if (!isWorkSessionActive.value) return 'bg-green-600 hover:bg-green-700 text-white'
+  if (currentTask.value?.status === 'pending') return 'bg-blue-600 hover:bg-blue-700 text-white'
+  if (currentTask.value?.status === 'in_progress') return 'bg-orange-600 hover:bg-orange-700 text-white'
+  return 'bg-red-600 hover:bg-red-700 text-white'
+}
+
+const primaryAction = async () => {
+  if (!isWorkSessionActive.value) {
+    await clockIn()
+  } else if (currentTask.value?.status === 'pending') {
+    await startTask(currentTask.value)
+  } else if (currentTask.value?.status === 'in_progress') {
+    await completeTask(currentTask.value)
+  } else {
+    await clockOut()
+  }
 }
 
 const canEndWorkDay = () => {
@@ -322,35 +287,21 @@ const getVisibleTasks = () => {
   return todayTasks.value.slice(0, 3)
 }
 
-// Methods
-const requestGps = async () => {
+// SIMPLIFIED GPS - No blocking modals
+const initializeGPS = async () => {
   try {
-    const success = await Promise.race([
-      requestGpsPermission(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('GPS request timeout after 20 seconds')), 20000)
-      )
-    ])
-    
-    if (success) {
-      showGpsModal.value = false
+    console.log('📍 Requesting GPS permission...')
+    const hasGps = await requestGpsPermission()
+    if (hasGps) {
       startLocationTracking()
+      console.log('✅ GPS enabled successfully')
     } else {
-      alert('❌ GPS permission denied. Please enable location services in your browser settings and try again.')
+      console.log('⚠️ GPS not available - continuing without location')
     }
   } catch (error) {
-    console.error('GPS request error:', error)
-    
-    if (error.message.includes('timeout')) {
-      alert('❌ GPS request timed out. Please check your location settings and try the "Skip GPS" option if needed.')
-    } else {
-      alert(`❌ GPS Error: ${error.message}. Use "Skip GPS" to continue without location.`)
-    }
+    console.warn('📍 GPS initialization failed:', error.message)
+    console.log('⚠️ Continuing without GPS - location features limited')
   }
-}
-
-const forceCloseModal = () => {
-  showGpsModal.value = false
 }
 
 const logout = async () => {
@@ -464,49 +415,63 @@ const completeTask = async (task) => {
   }
 }
 
-// Work Session Methods
+// SIMPLIFIED Work Session Methods
 const clockIn = async () => {
-  // Clock in only needs basic GPS availability, not perfect accuracy
-  if (!isGpsAvailable.value) {
-    const proceed = confirm('⚠️ GPS not available. Clock in anyway?\n\nNote: You\'ll need GPS for deliveries later.')
-    if (!proceed) {
-      return
-    }
-  }
-
   try {
+    console.log('🕐 Starting work session...')
+    
+    // Try to get GPS quickly but don't block on it
+    if (!currentLocation.value) {
+      await getQuickGpsLocation().catch(() => {
+        console.log('📍 GPS not available for clock-in, continuing anyway')
+      })
+    }
+
     const result = await startWorkSession()
     if (result.success) {
-      alert(`✅ Work session started! Your time is being tracked.`)
+      console.log('✅ Work session started successfully')
+      // Simple success message for alpha test
+      alert('✅ Work started! Your time is being tracked.')
+      
+      // Refresh tasks after clocking in
+      await refreshTasks()
     } else {
-      alert(`❌ Failed to start work session: ${result.error || 'Unknown error'}`)
+      console.error('❌ Work session failed:', result.error)
+      alert('⚠️ Could not start work session. Please try again.')
     }
   } catch (error) {
     console.error('Clock in error:', error)
-    alert(`❌ Failed to clock in: ${error.message}`)
+    alert('⚠️ Could not start work session. Please try again.')
   }
 }
 
 const clockOut = async () => {
-  // Clock out only needs basic GPS availability, not perfect accuracy
-  if (!isGpsAvailable.value) {
-    const proceed = confirm('⚠️ GPS not available. Clock out anyway?\n\nNote: Location will not be recorded.')
-    if (!proceed) return
-  }
-
-  // Confirm before clocking out
-  const confirmClockOut = confirm(`Are you sure you want to clock out?\n\nYour current work time: ${getFormattedWorkTime()}\nThis will end your work session.`)
+  // Simple confirmation for alpha test
+  const confirmClockOut = confirm(`End your work day?\n\nTime worked: ${getFormattedWorkTime()}`)
   
   if (!confirmClockOut) return
 
   try {
+    console.log('🕐 Ending work session...')
+    
+    // Try to get GPS for clock-out but don't block
+    if (!currentLocation.value) {
+      await getQuickGpsLocation().catch(() => {
+        console.log('📍 GPS not available for clock-out, continuing anyway')
+      })
+    }
+
     const result = await endWorkSession()
     if (result.success) {
-      alert(`✅ Work session ended!\n\nTotal time worked: ${result.totalHours} hours\n\nGreat job today! 🎉`)
+      console.log('✅ Work session ended successfully')
+      alert(`✅ Work day complete!\n\nTotal time: ${result.totalHours} hours\n\nGreat job! 🎉`)
+    } else {
+      console.error('❌ Clock out failed:', result.error)
+      alert('⚠️ Could not end work session. Please try again.')
     }
   } catch (error) {
     console.error('Clock out error:', error)
-    alert(`❌ Failed to clock out: ${error.message}`)
+    alert('⚠️ Could not end work session. Please try again.')
   }
 }
 
@@ -538,24 +503,61 @@ const updateDriverPresence = async () => {
   }
   
   try {
-    // Use the database function for proper upsert
-    const { data: functionData, error: functionError } = await supabase
-      .rpc('upsert_driver_presence', {
-        p_driver_id: driverId.value,
-        p_is_online: true,
-        p_device_id: 'web'
-      })
+    // Prepare presence data with GPS coordinates
+    const presenceData = {
+      driver_id: driverId.value,
+      is_online: true,
+      last_seen: new Date().toISOString(),
+      device_id: 'web',
+      // FIXED: Include GPS coordinates for live tracking
+      location_lat: currentLocation.value?.latitude || null,
+      location_lng: currentLocation.value?.longitude || null,
+      gps_accuracy: gpsAccuracy.value || null,
+      battery_level: batteryLevel.value || null,
+      signal_status: signalStatus.value || 'unknown'
+    }
+
+    console.log('📍 Updating driver presence with GPS:', {
+      driver: driverId.value,
+      hasGPS: !!(presenceData.location_lat && presenceData.location_lng),
+      accuracy: presenceData.gps_accuracy
+    })
     
-    if (functionError) {
-      // Fallback to direct upsert
-      await supabase
+    // Try direct upsert with proper conflict handling
+    const { data, error } = await supabase
+      .from('driver_presence')
+      .upsert(presenceData, {
+        onConflict: 'driver_id,device_id',
+        ignoreDuplicates: false
+      })
+      .select()
+    
+    if (error) {
+      console.error('❌ Driver presence upsert failed:', error)
+      
+      // Fallback: try updating existing record
+      const { data: updateData, error: updateError } = await supabase
         .from('driver_presence')
-        .upsert({
-          driver_id: driverId.value,
+        .update({
           is_online: true,
           last_seen: new Date().toISOString(),
-          device_id: 'web'
+          location_lat: presenceData.location_lat,
+          location_lng: presenceData.location_lng,
+          gps_accuracy: presenceData.gps_accuracy,
+          battery_level: presenceData.battery_level,
+          signal_status: presenceData.signal_status
         })
+        .eq('driver_id', driverId.value)
+        .eq('device_id', 'web')
+        .select()
+      
+      if (updateError) {
+        console.error('❌ Update fallback also failed:', updateError)
+      } else {
+        console.log('✅ Driver presence updated via UPDATE with GPS')
+      }
+    } else {
+      console.log('✅ Driver presence updated with GPS coordinates')
     }
     
   } catch (error) {
@@ -594,13 +596,17 @@ onMounted(async () => {
     // Start presence reporting
     await startPresenceReporting()
     
-    // Check GPS permission
-    const hasGps = await requestGpsPermission()
-    if (!hasGps) {
-      showGpsModal.value = true
-    } else {
-      startLocationTracking()
-    }
+    // NEW: Load active work session (fixes refresh bug)
+    await loadActiveWorkSession()
+    console.log('💼 Work session state loaded')
+    
+    // NEW: Enable ghost control system
+    enableGhostControl()
+    connectToGhostControl()
+    console.log('👻 Ghost control system activated for driver:', driverId.value)
+    
+    // SIMPLIFIED GPS initialization
+    await initializeGPS()
   } catch (error) {
     console.error('Driver initialization error:', error)
     
@@ -644,3 +650,4 @@ onUnmounted(() => {
   transition: color 0.2s ease;
 }
 </style> 
+}
