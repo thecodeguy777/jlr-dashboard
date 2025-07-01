@@ -890,6 +890,96 @@ export function useDriverTracking() {
     gpsAccuracy.value = accuracy
 
     console.log(`📍 Location updated: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${accuracy}m)`)
+    
+    // GEOFENCE DETECTION: Check if driver arrived at any task location
+    checkTaskGeofences(latitude, longitude)
+  }
+
+  // GEOFENCE DETECTION: Automatic 'arrived' logging when entering task geofence
+  const checkTaskGeofences = async (lat, lng) => {
+    try {
+      // Get current tasks from window object (set by driver dashboard)
+      const currentTasks = window.currentDriverTasks || []
+      
+      // Check each pending task for geofence entry
+      for (const task of currentTasks) {
+        if (task.status === 'in_progress' && task.destination_lat && task.destination_lng) {
+          const distance = calculateDistance(
+            lat, lng,
+            task.destination_lat, task.destination_lng
+          )
+          
+          const geofenceRadius = task.geofence_radius || 100 // Default 100m radius
+          
+          // Driver entered geofence - log 'arrived' action
+          if (distance <= geofenceRadius) {
+            console.log(`🎯 GEOFENCE ENTRY: Driver arrived at ${task.destination_name} (${distance.toFixed(0)}m from center)`)
+            
+            // Check if already logged arrival for this task
+            const alreadyArrived = await checkIfAlreadyArrived(task.id)
+            if (!alreadyArrived) {
+              await logArrivalAction(task, lat, lng)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Geofence check failed (non-critical):', error)
+    }
+  }
+
+  // Check if arrival already logged for this task
+  const checkIfAlreadyArrived = async (taskId) => {
+    try {
+      const { data, error } = await supabase
+        .from('delivery_logs')
+        .select('id')
+        .eq('driver_id', driverId.value)
+        .eq('action_type', 'arrived')
+        .like('note', `%task_id:${taskId}%`)
+        .limit(1)
+      
+      if (error) throw error
+      return data && data.length > 0
+    } catch (error) {
+      console.warn('⚠️ Could not check arrival status:', error)
+      return false
+    }
+  }
+
+  // Log automatic arrival action
+  const logArrivalAction = async (task, lat, lng) => {
+    try {
+      await supabase
+        .from('delivery_logs')
+        .insert({
+          driver_id: driverId.value,
+          action_type: 'arrived',
+          timestamp: new Date().toISOString(),
+          latitude: lat,
+          longitude: lng,
+          gps_accuracy: gpsAccuracy.value,
+          note: `Auto-arrived at ${task.destination_name} (geofence) - task_id:${task.id}`,
+          battery_level: batteryLevel.value,
+          signal_status: signalStatus.value || 'unknown',
+          synced: true
+        })
+      
+      console.log('✅ Automatic arrival logged for geofence entry')
+      
+      // Notify admin of geofence entry
+      notifyAdmin({
+        type: 'GEOFENCE_ENTRY',
+        driver_id: driverId.value,
+        task_id: task.id,
+        destination: task.destination_name,
+        location: { lat, lng },
+        timestamp: new Date().toISOString()
+      })
+      
+    } catch (error) {
+      console.error('❌ Failed to log automatic arrival:', error)
+    }
   }
 
   const handleLocationError = (error) => {
@@ -1027,13 +1117,13 @@ export function useDriverTracking() {
 
       console.log('✅ Work session started with GPS location saved to database:', data.id)
       
-      // FIXED: Log action to delivery_logs for admin visibility
+      // FIXED: Log CLOCK-IN action to delivery_logs for admin visibility
       try {
         await supabase
           .from('delivery_logs')
           .insert({
             driver_id: driverId.value,
-            action_type: 'start_route',
+            action_type: 'clocked_in',
             timestamp: sessionData.start_time,
             latitude: sessionData.start_latitude,
             longitude: sessionData.start_longitude,
@@ -1129,13 +1219,13 @@ export function useDriverTracking() {
 
       console.log('✅ Work session ended with GPS location saved to database')
       
-      // FIXED: Log action to delivery_logs for admin visibility
+      // FIXED: Log CLOCK-OUT action to delivery_logs for admin visibility
       try {
         await supabase
           .from('delivery_logs')
           .insert({
             driver_id: driverId.value,
-            action_type: 'end_route',
+            action_type: 'clocked_out',
             timestamp: endTime,
             latitude: currentLocation.value?.latitude,
             longitude: currentLocation.value?.longitude,

@@ -473,6 +473,10 @@ const refreshTasks = async () => {
   try {
     const today = new Date().toISOString().split('T')[0]
     await fetchDriverTasks(driverId.value, today)
+    
+    // FIXED: Update tasks on window object for geofence detection
+    window.currentDriverTasks = todayTasks.value
+    console.log('🎯 Updated driver tasks for geofence detection:', todayTasks.value.length)
   } catch (error) {
     console.error('Error refreshing tasks:', error)
     alert('❌ Failed to refresh tasks. Please try again.')
@@ -486,6 +490,15 @@ const startTask = async (task) => {
   }
 
   try {
+    // FIXED: Set current GPS data for task management to access
+    window.currentGpsLocation = {
+      latitude: currentLocation.value?.latitude,
+      longitude: currentLocation.value?.longitude,
+      accuracy: gpsAccuracy.value,
+      battery_level: batteryLevel.value,
+      signal_status: signalStatus.value || 'unknown'
+    }
+    
     await startTaskAction(task.id)
     alert(`✅ Started delivery to ${task.destination_name || 'customer'}`)
   } catch (error) {
@@ -504,6 +517,15 @@ const completeTask = async (task) => {
   if (notes === null) return // User cancelled
 
   try {
+    // FIXED: Set current GPS data for task management to access
+    window.currentGpsLocation = {
+      latitude: currentLocation.value?.latitude,
+      longitude: currentLocation.value?.longitude,
+      accuracy: gpsAccuracy.value,
+      battery_level: batteryLevel.value,
+      signal_status: signalStatus.value || 'unknown'
+    }
+    
     await completeTaskAction(task.id, {
       completion_notes: notes || null,
       completion_location: {
@@ -641,6 +663,9 @@ onMounted(async () => {
     
     // Load today's tasks
     await refreshTasks()
+    
+    // FIXED: Set tasks on window object for geofence detection
+    window.currentDriverTasks = todayTasks.value
     
     // Setup robust sync manager
     setupAutoSync()

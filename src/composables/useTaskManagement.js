@@ -142,17 +142,23 @@ export function useTaskManagement() {
       
       console.log(`📝 Task start ${result.synced ? 'synced' : 'queued'}: ${task.task_title}`)
       
-      // FIXED: Log action to delivery_logs for admin visibility
+      // FIXED: Log START DELIVERY action to delivery_logs for admin visibility  
       try {
+        // Get current GPS location - will be updated when driver dashboard calls this
+        const gpsData = window.currentGpsLocation || null
+        
         await supabase
           .from('delivery_logs')
           .insert({
             driver_id: task.driver_id,
-            action_type: 'arrived',
+            action_type: 'start_route',
             timestamp: updateData.started_at,
-            latitude: null, // GPS will be added by driver dashboard
-            longitude: null,
-            note: `Started delivery: ${task.task_title}`,
+            latitude: gpsData?.latitude || null,
+            longitude: gpsData?.longitude || null,
+            gps_accuracy: gpsData?.accuracy || null,
+            note: `Started delivery route: ${task.task_title}`,
+            battery_level: gpsData?.battery_level || null,
+            signal_status: gpsData?.signal_status || 'unknown',
             synced: true
           })
         console.log('📝 Task start action logged for admin visibility')
