@@ -8,11 +8,31 @@
       </button>
     </div>
 
-    <!-- SIMPLIFIED: GPS Status Bar (No blocking modal) -->
-    <div v-if="!isGpsAvailable && isWorkSessionActive" class="bg-yellow-600/20 border border-yellow-500/30 rounded-lg p-3 mx-4 mb-4">
-      <div class="flex items-center gap-2">
-        <div class="animate-pulse">📍</div>
-        <div class="text-sm text-yellow-200">Getting your location... This helps track your work accurately.</div>
+    <!-- GPS & Tracking Status Cards -->
+    <div class="mx-4 mb-4 space-y-2">
+      <!-- GPS Status -->
+      <div v-if="!isGpsAvailable && isWorkSessionActive" class="bg-yellow-600/20 border border-yellow-500/30 rounded-lg p-3">
+        <div class="flex items-center gap-2">
+          <div class="animate-pulse">📍</div>
+          <div class="text-sm text-yellow-200">Getting your location... This helps track your work accurately.</div>
+        </div>
+      </div>
+
+      <!-- Movement Detection Status -->
+      <div v-if="isWorkSessionActive" class="bg-blue-600/20 border border-blue-500/30 rounded-lg p-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="text-lg">{{ getTrackingIcon() }}</div>
+            <div>
+              <div class="text-sm font-medium text-blue-200">{{ getTrackingStatus() }}</div>
+              <div class="text-xs text-blue-300">{{ getTrackingDetails() }}</div>
+            </div>
+          </div>
+          <div v-if="currentSpeed > 0" class="text-right">
+            <div class="text-sm font-bold text-blue-200">{{ Math.round(currentSpeed) }} km/h</div>
+            <div class="text-xs text-blue-300">Current Speed</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -146,7 +166,11 @@ const {
   endWorkSession,
   loadActiveWorkSession,
   getFormattedWorkTime,
-  // NEW: Ghost control functionality
+  // Movement detection & tracking
+  isMoving,
+  autoTrackingMode,
+  trackingTrigger,
+  // Ghost control functionality
   connectToGhostControl,
   enableGhostControl
 } = useDriverTracking()
@@ -247,6 +271,28 @@ const primaryAction = async () => {
   } else {
     await clockOut()
   }
+}
+
+// Movement Detection Status Display
+const getTrackingIcon = () => {
+  if (isMoving.value) return '🚶‍♂️'
+  if (isActiveRoute.value) return '📍'
+  if (autoTrackingMode.value) return '🎯'
+  return '⏸️'
+}
+
+const getTrackingStatus = () => {
+  if (isMoving.value) return 'Movement Detected'
+  if (isActiveRoute.value) return 'GPS Tracking Active'
+  if (autoTrackingMode.value) return 'Auto-Tracking On'
+  return 'Tracking Standby'
+}
+
+const getTrackingDetails = () => {
+  if (isMoving.value) return `Speed: ${Math.round(currentSpeed.value || 0)} km/h • Logging every 30s`
+  if (isActiveRoute.value) return 'Location logged every 30 seconds'
+  if (trackingTrigger.value) return `Triggered by: ${trackingTrigger.value}`
+  return 'Ready to track movement'
 }
 
 const canEndWorkDay = () => {
