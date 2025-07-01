@@ -18,19 +18,76 @@
         </div>
       </div>
 
-      <!-- Movement Detection Status -->
-      <div v-if="isWorkSessionActive" class="bg-blue-600/20 border border-blue-500/30 rounded-lg p-3">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <div class="text-lg">{{ getTrackingIcon() }}</div>
+      <!-- Enhanced Movement Detection Status -->
+      <div v-if="isWorkSessionActive" :class="getStatusCardClass()" class="rounded-lg p-4">
+        <!-- Main Status Header -->
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <div class="text-xl">{{ getTrackingIcon() }}</div>
             <div>
-              <div class="text-sm font-medium text-blue-200">{{ getTrackingStatus() }}</div>
-              <div class="text-xs text-blue-300">{{ getTrackingDetails() }}</div>
+              <div class="text-sm font-bold" :class="getStatusTextClass()">{{ getTrackingStatus() }}</div>
+              <div class="text-xs" :class="getStatusSubTextClass()">{{ getTrackingDetails() }}</div>
             </div>
           </div>
           <div v-if="currentSpeed > 0" class="text-right">
-            <div class="text-sm font-bold text-blue-200">{{ Math.round(currentSpeed) }} km/h</div>
-            <div class="text-xs text-blue-300">Current Speed</div>
+            <div class="text-lg font-bold text-green-200">{{ Math.round(currentSpeed) }}</div>
+            <div class="text-xs text-green-300">km/h</div>
+          </div>
+        </div>
+
+        <!-- Detailed Status Grid -->
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <!-- GPS Status -->
+          <div class="bg-black/20 rounded-lg p-2">
+            <div class="flex items-center gap-1 mb-1">
+              <span>{{ getGpsStatusIcon() }}</span>
+              <span class="font-medium text-gray-200">GPS Status</span>
+            </div>
+            <div :class="getGpsStatusClass()">{{ getGpsStatusText() }}</div>
+            <div v-if="gpsAccuracy" class="text-gray-400 mt-1">Accuracy: {{ Math.round(gpsAccuracy) }}m</div>
+          </div>
+
+          <!-- Connection Status -->
+          <div class="bg-black/20 rounded-lg p-2">
+            <div class="flex items-center gap-1 mb-1">
+              <span>{{ getConnectionIcon() }}</span>
+              <span class="font-medium text-gray-200">Connection</span>
+            </div>
+            <div :class="getConnectionClass()">{{ getConnectionStatus() }}</div>
+            <div class="text-gray-400 mt-1">{{ getConnectionDetails() }}</div>
+          </div>
+
+          <!-- Tracking Mode -->
+          <div class="bg-black/20 rounded-lg p-2">
+            <div class="flex items-center gap-1 mb-1">
+              <span>🎯</span>
+              <span class="font-medium text-gray-200">Tracking</span>
+            </div>
+            <div class="text-blue-200">{{ getTrackingMode() }}</div>
+            <div class="text-gray-400 mt-1">{{ getBreadcrumbStatus() }}</div>
+          </div>
+
+          <!-- Battery & Performance -->
+          <div class="bg-black/20 rounded-lg p-2">
+            <div class="flex items-center gap-1 mb-1">
+              <span>{{ getBatteryIcon() }}</span>
+              <span class="font-medium text-gray-200">System</span>
+            </div>
+            <div :class="getBatteryClass()">{{ getBatteryStatus() }}</div>
+            <div class="text-gray-400 mt-1">{{ getPerformanceStatus() }}</div>
+          </div>
+        </div>
+
+        <!-- Warnings or Issues -->
+        <div v-if="getSystemWarnings().length > 0" class="mt-3 p-2 bg-yellow-600/20 border border-yellow-500/30 rounded-lg">
+          <div class="flex items-center gap-1 mb-1">
+            <span>⚠️</span>
+            <span class="text-xs font-medium text-yellow-200">System Alerts</span>
+          </div>
+          <div class="space-y-1">
+            <div v-for="warning in getSystemWarnings()" :key="warning" class="text-xs text-yellow-300">
+              • {{ warning }}
+            </div>
           </div>
         </div>
       </div>
@@ -166,6 +223,7 @@ const {
   endWorkSession,
   loadActiveWorkSession,
   getFormattedWorkTime,
+  updateDriverPresenceWithLocation,
   // Movement detection & tracking
   isMoving,
   autoTrackingMode,
@@ -358,22 +416,12 @@ const logout = async () => {
     // Stop presence reporting first
     stopPresenceReporting()
     
-    // Mark driver as offline BEFORE clearing user
+    // Mark driver as offline BEFORE clearing user - FIXED: Use composable function
     if (currentDriverId) {
       try {
-        // Try to update driver_presence table
-        const { error: presenceError } = await supabase
-          .from('driver_presence')
-          .update({
-            is_online: false,
-            last_seen: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('driver_id', currentDriverId)
-        
-        if (presenceError) {
-          console.warn('Could not update driver presence:', presenceError)
-        }
+        console.log('📴 Marking driver as offline before logout')
+        await updateDriverPresenceWithLocation(false)
+        console.log('✅ Driver marked as offline successfully')
       } catch (presenceError) {
         console.warn('Could not update driver presence:', presenceError)
       }
@@ -521,100 +569,42 @@ const clockOut = async () => {
   }
 }
 
-// Driver Presence Reporting
+// Driver Presence Reporting - FIXED: Use composable function
 let presenceInterval = null
 
 const startPresenceReporting = async () => {
   if (!driverId.value) {
+    console.warn('⚠️ Cannot start presence reporting: Driver ID not available')
     return
   }
+  
+  console.log('📡 Starting driver presence reporting for driver:', driverId.value)
   
   // Clear any existing interval
   if (presenceInterval) {
     clearInterval(presenceInterval)
   }
   
-  // Update presence immediately
-  await updateDriverPresence()
+  // Update presence immediately using composable function
+  await updateDriverPresenceWithLocation(true)
   
-  // Update presence every 30 seconds
+  // Update presence every 30 seconds using composable function
   presenceInterval = setInterval(async () => {
-    await updateDriverPresence()
+    try {
+      await updateDriverPresenceWithLocation(true)
+    } catch (error) {
+      console.error('⚠️ Presence update failed (will retry):', error)
+    }
   }, 30000)
-}
-
-const updateDriverPresence = async () => {
-  if (!driverId.value) {
-    return
-  }
   
-  try {
-    // Prepare presence data with GPS coordinates
-    const presenceData = {
-      driver_id: driverId.value,
-      is_online: true,
-      last_seen: new Date().toISOString(),
-      device_id: 'web',
-      // FIXED: Include GPS coordinates for live tracking
-      location_lat: currentLocation.value?.latitude || null,
-      location_lng: currentLocation.value?.longitude || null,
-      gps_accuracy: gpsAccuracy.value || null,
-      battery_level: batteryLevel.value || null,
-      signal_status: signalStatus.value || 'unknown'
-    }
-
-    console.log('📍 Updating driver presence with GPS:', {
-      driver: driverId.value,
-      hasGPS: !!(presenceData.location_lat && presenceData.location_lng),
-      accuracy: presenceData.gps_accuracy
-    })
-    
-    // Try direct upsert with proper conflict handling
-    const { data, error } = await supabase
-      .from('driver_presence')
-      .upsert(presenceData, {
-        onConflict: 'driver_id,device_id',
-        ignoreDuplicates: false
-      })
-      .select()
-    
-    if (error) {
-      console.error('❌ Driver presence upsert failed:', error)
-      
-      // Fallback: try updating existing record
-      const { data: updateData, error: updateError } = await supabase
-        .from('driver_presence')
-        .update({
-          is_online: true,
-          last_seen: new Date().toISOString(),
-          location_lat: presenceData.location_lat,
-          location_lng: presenceData.location_lng,
-          gps_accuracy: presenceData.gps_accuracy,
-          battery_level: presenceData.battery_level,
-          signal_status: presenceData.signal_status
-        })
-        .eq('driver_id', driverId.value)
-        .eq('device_id', 'web')
-        .select()
-      
-      if (updateError) {
-        console.error('❌ Update fallback also failed:', updateError)
-      } else {
-        console.log('✅ Driver presence updated via UPDATE with GPS')
-      }
-    } else {
-      console.log('✅ Driver presence updated with GPS coordinates')
-    }
-    
-  } catch (error) {
-    console.error('Error updating driver presence:', error)
-  }
+  console.log('✅ Presence reporting started - updating every 30 seconds')
 }
 
 const stopPresenceReporting = () => {
   if (presenceInterval) {
     clearInterval(presenceInterval)
     presenceInterval = null
+    console.log('📴 Presence reporting stopped')
   }
 }
 
@@ -665,6 +655,128 @@ onMounted(async () => {
     }
   }
 })
+
+// Status Display Methods for Enhanced Movement Detection Card
+const getStatusCardClass = () => {
+  if (isMoving.value) return 'bg-green-600/20 border border-green-500/30'
+  if (isActiveRoute.value) return 'bg-blue-600/20 border border-blue-500/30'
+  if (autoTrackingMode.value) return 'bg-orange-600/20 border border-orange-500/30'
+  return 'bg-gray-600/20 border border-gray-500/30'
+}
+
+const getStatusTextClass = () => {
+  if (isMoving.value) return 'text-green-200'
+  if (isActiveRoute.value) return 'text-blue-200'
+  if (autoTrackingMode.value) return 'text-orange-200'
+  return 'text-gray-200'
+}
+
+const getStatusSubTextClass = () => {
+  if (isMoving.value) return 'text-green-300'
+  if (isActiveRoute.value) return 'text-blue-300'
+  if (autoTrackingMode.value) return 'text-orange-300'
+  return 'text-gray-300'
+}
+
+const getGpsStatusIcon = () => {
+  if (!currentLocation.value) return '📍'
+  if (gpsAccuracy.value <= 10) return '🎯'
+  if (gpsAccuracy.value <= 50) return '📍'
+  return '📍'
+}
+
+const getGpsStatusClass = () => {
+  if (!currentLocation.value) return 'text-red-300'
+  if (gpsAccuracy.value <= 10) return 'text-green-300'
+  if (gpsAccuracy.value <= 50) return 'text-yellow-300'
+  return 'text-red-300'
+}
+
+const getGpsStatusText = () => {
+  if (!currentLocation.value) return 'No GPS'
+  if (gpsAccuracy.value <= 10) return 'Excellent'
+  if (gpsAccuracy.value <= 50) return 'Good'
+  return 'Poor'
+}
+
+const getConnectionIcon = () => {
+  if (isOnline.value) return '🟢'
+  return '🔴'
+}
+
+const getConnectionClass = () => {
+  if (isOnline.value) return 'text-green-300'
+  return 'text-red-300'
+}
+
+const getConnectionStatus = () => {
+  if (isOnline.value) return 'Online'
+  return 'Offline'
+}
+
+const getConnectionDetails = () => {
+  if (isOnline.value) return 'Connected to server'
+  return 'No internet connection'
+}
+
+const getTrackingMode = () => {
+  if (isMoving.value) return 'Active Movement'
+  if (isActiveRoute.value) return 'Route Active'
+  if (autoTrackingMode.value) return 'Auto-Tracking'
+  return 'Standby'
+}
+
+const getBreadcrumbStatus = () => {
+  if (isActiveRoute.value) return 'Logging GPS every 30s'
+  return 'Ready to track'
+}
+
+const getBatteryIcon = () => {
+  if (!batteryLevel.value) return '🔋'
+  if (batteryLevel.value > 80) return '🔋'
+  if (batteryLevel.value > 50) return '🔋'
+  if (batteryLevel.value > 20) return '🪫'
+  return '🪫'
+}
+
+const getBatteryClass = () => {
+  if (!batteryLevel.value) return 'text-gray-300'
+  if (batteryLevel.value > 50) return 'text-green-300'
+  if (batteryLevel.value > 20) return 'text-yellow-300'
+  return 'text-red-300'
+}
+
+const getBatteryStatus = () => {
+  if (!batteryLevel.value) return 'Unknown'
+  return `${batteryLevel.value}%`
+}
+
+const getPerformanceStatus = () => {
+  if (signalStatus.value === 'good') return 'Signal: Strong'
+  if (signalStatus.value === 'fair') return 'Signal: Fair'
+  if (signalStatus.value === 'poor') return 'Signal: Weak'
+  return 'Signal: Unknown'
+}
+
+const getSystemWarnings = () => {
+  const warnings = []
+  
+  if (!currentLocation.value) {
+    warnings.push('GPS location not available')
+  } else if (gpsAccuracy.value > 100) {
+    warnings.push(`Poor GPS accuracy (${Math.round(gpsAccuracy.value)}m)`)
+  }
+  
+  if (!isOnline.value) {
+    warnings.push('No internet connection - working offline')
+  }
+  
+  if (batteryLevel.value && batteryLevel.value < 20) {
+    warnings.push(`Low battery (${batteryLevel.value}%)`)
+  }
+  
+  return warnings
+}
 
 // Cleanup when component unmounts
 onUnmounted(() => {

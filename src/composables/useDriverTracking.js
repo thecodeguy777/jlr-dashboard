@@ -1356,6 +1356,7 @@ export function useDriverTracking() {
     endWorkSession,
     loadActiveWorkSession,
     getFormattedWorkTime,
+    updateDriverPresenceWithLocation,
     
     // NEW: Auto-tracking methods
     startAutoTracking,

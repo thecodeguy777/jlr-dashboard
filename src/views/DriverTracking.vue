@@ -18,6 +18,26 @@
       </div>
     </div>
 
+    <!-- System Health Banner -->
+    <div class="mb-6 p-4 rounded-lg border" :class="systemHealthClass">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">{{ systemHealthIcon }}</span>
+          <div>
+            <h3 class="font-semibold">{{ systemHealthStatus }}</h3>
+            <p class="text-sm opacity-80">{{ systemHealthMessage }}</p>
+          </div>
+        </div>
+        <div class="text-right text-sm">
+          <div>Last Updated: {{ formatTimeAgo(new Date().toISOString()) }}</div>
+          <div class="flex items-center gap-2 mt-1">
+            <div :class="['w-2 h-2 rounded-full', onlineDrivers.length > 0 ? 'bg-green-400' : 'bg-red-400']"></div>
+            <span>{{ onlineDrivers.length }} drivers online</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Summary Stats -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
       <div class="bg-white/10 rounded-xl p-4 shadow">
@@ -115,9 +135,137 @@
       </div>
     </div>
 
-    <!-- Live Map -->
+    <!-- Live Map with Enhanced Driver Status -->
     <div v-if="selectedTab === 'live'">
-      <LiveDriverMap />
+      <!-- Driver Status Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div class="lg:col-span-2">
+          <LiveDriverMap />
+        </div>
+        
+        <!-- Enhanced Driver Status Panel -->
+        <div class="space-y-4">
+          <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+            📊 Driver Status Dashboard
+          </h3>
+          
+          <div v-for="driver in onlineDrivers" :key="driver.driver_id" class="bg-white/10 rounded-lg border border-white/20 p-4">
+            <!-- Driver Header -->
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div :class="getDriverStatusIndicator(driver)" class="w-3 h-3 rounded-full"></div>
+                <div>
+                  <div class="font-medium text-white">{{ driver.drivers?.name || 'Unknown Driver' }}</div>
+                  <div class="text-xs text-gray-400">{{ driver.drivers?.phone || 'No phone' }}</div>
+                </div>
+              </div>
+              <div class="text-xs text-gray-400">
+                {{ formatTimeAgo(driver.last_seen) }}
+              </div>
+            </div>
+
+            <!-- Status Grid -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <!-- Connection Status -->
+              <div class="bg-black/20 rounded p-2">
+                <div class="flex items-center gap-1 mb-1">
+                  <span>{{ getConnectionStatusIcon(driver) }}</span>
+                  <span class="text-gray-300">Connection</span>
+                </div>
+                <div :class="getConnectionStatusClass(driver)">
+                  {{ getConnectionStatusText(driver) }}
+                </div>
+              </div>
+
+              <!-- GPS Status -->
+              <div class="bg-black/20 rounded p-2">
+                <div class="flex items-center gap-1 mb-1">
+                  <span>📍</span>
+                  <span class="text-gray-300">GPS</span>
+                </div>
+                <div :class="getGpsStatusClass(driver)">
+                  {{ getGpsStatusText(driver) }}
+                </div>
+                <div v-if="driver.gps_accuracy" class="text-gray-400 mt-1">
+                  ±{{ Math.round(driver.gps_accuracy) }}m
+                </div>
+              </div>
+
+              <!-- Battery Status -->
+              <div class="bg-black/20 rounded p-2">
+                <div class="flex items-center gap-1 mb-1">
+                  <span>{{ getBatteryIcon(driver) }}</span>
+                  <span class="text-gray-300">Battery</span>
+                </div>
+                <div :class="getBatteryStatusClass(driver)">
+                  {{ getBatteryStatusText(driver) }}
+                </div>
+              </div>
+
+              <!-- Activity Status -->
+              <div class="bg-black/20 rounded p-2">
+                <div class="flex items-center gap-1 mb-1">
+                  <span>🚚</span>
+                  <span class="text-gray-300">Activity</span>
+                </div>
+                <div class="text-blue-200">
+                  {{ getActivityStatusText(driver) }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Activity Summary -->
+            <div class="mt-3 pt-3 border-t border-white/10">
+              <div class="flex justify-between text-xs">
+                <span class="text-gray-400">Today's Activity:</span>
+                <span class="text-white">{{ getDriverActivitySummary(driver) }}</span>
+              </div>
+            </div>
+
+            <!-- Warning Indicators -->
+            <div v-if="getDriverWarnings(driver).length > 0" class="mt-2 p-2 bg-yellow-600/20 border border-yellow-500/30 rounded">
+              <div class="flex items-center gap-1 mb-1">
+                <span>⚠️</span>
+                <span class="text-xs text-yellow-200">Alerts</span>
+              </div>
+              <div class="space-y-1">
+                <div v-for="warning in getDriverWarnings(driver)" :key="warning" class="text-xs text-yellow-300">
+                  • {{ warning }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="mt-3 flex gap-2">
+              <button @click="viewDriverRoute(driver.driver_id, 'today')" 
+                class="flex-1 bg-orange-600/80 hover:bg-orange-600 text-white text-xs px-2 py-1 rounded transition">
+                🗺️ Route
+              </button>
+              <button @click="sendGhostMessage(driver.driver_id)" 
+                class="flex-1 bg-blue-600/80 hover:bg-blue-600 text-white text-xs px-2 py-1 rounded transition">
+                💬 Message
+              </button>
+            </div>
+          </div>
+
+          <!-- Offline Drivers Summary -->
+          <div v-if="offlineDrivers.length > 0" class="bg-gray-800/50 rounded-lg border border-gray-600/50 p-4">
+            <h4 class="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+              😴 Offline Drivers ({{ offlineDrivers.length }})
+            </h4>
+            <div class="space-y-1">
+              <div v-for="driver in offlineDrivers.slice(0, 5)" :key="driver.id" 
+                class="flex justify-between text-xs text-gray-400">
+                <span>{{ driver.name }}</span>
+                <span>{{ formatTimeAgo(driver.last_seen) }}</span>
+              </div>
+            </div>
+            <div v-if="offlineDrivers.length > 5" class="text-xs text-gray-500 mt-2">
+              +{{ offlineDrivers.length - 5 }} more offline
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Data Display - Mobile Optimized -->
@@ -504,7 +652,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { supabase } from '@/lib/supabase'
 import RouteViewer from '../components/RouteViewer.vue'
 import LiveDriverMap from '../components/LiveDriverMap.vue'
@@ -627,6 +775,54 @@ const uniqueDrivers = computed(() => {
   return Array.from(driverMap.values()).sort((a, b) => 
     new Date(b.lastActivity) - new Date(a.lastActivity)
   )
+})
+
+const systemHealthClass = computed(() => {
+  const criticalIssues = redFlags.value.filter(flag => 
+    ['Missing GPS', 'Low Battery', 'Poor connection'].includes(flag.type)
+  ).length
+  
+  if (onlineDrivers.value.length === 0) {
+    return 'bg-red-900/30 border-red-500/50 text-red-200'
+  }
+  if (criticalIssues > 0) {
+    return 'bg-yellow-900/30 border-yellow-500/50 text-yellow-200'
+  }
+  return 'bg-green-900/30 border-green-500/50 text-green-200'
+})
+
+const systemHealthIcon = computed(() => {
+  const criticalIssues = redFlags.value.filter(flag => 
+    ['Missing GPS', 'Low Battery', 'Poor connection'].includes(flag.type)
+  ).length
+  
+  if (onlineDrivers.value.length === 0) return '🔴'
+  if (criticalIssues > 0) return '⚠️'
+  return '✅'
+})
+
+const systemHealthStatus = computed(() => {
+  const criticalIssues = redFlags.value.filter(flag => 
+    ['Missing GPS', 'Low Battery', 'Poor connection'].includes(flag.type)
+  ).length
+  
+  if (onlineDrivers.value.length === 0) return 'System Offline'
+  if (criticalIssues > 0) return 'System Warning'
+  return 'All Systems Operational'
+})
+
+const systemHealthMessage = computed(() => {
+  const criticalIssues = redFlags.value.filter(flag => 
+    ['Missing GPS', 'Low Battery', 'Poor connection'].includes(flag.type)
+  ).length
+  
+  if (onlineDrivers.value.length === 0) {
+    return 'No drivers currently online or tracking'
+  }
+  if (criticalIssues > 0) {
+    return `${criticalIssues} critical issue${criticalIssues === 1 ? '' : 's'} require attention`
+  }
+  return 'All drivers connected with good GPS and battery levels'
 })
 
 // Methods
@@ -903,8 +1099,223 @@ const closeRouteViewer = () => {
   routeViewerDate.value = null
 }
 
-// Initialize
+// ROBUST DRIVER STATUS METHODS
+const offlineDrivers = computed(() => {
+  // This would come from a drivers table query
+  // For now, return empty array - you could enhance this
+  return []
+})
+
+const getDriverStatusIndicator = (driver) => {
+  const lastSeen = new Date(driver.last_seen)
+  const now = new Date()
+  const minutesAgo = (now - lastSeen) / (1000 * 60)
+  
+  if (minutesAgo < 2) return 'bg-green-400 animate-pulse' // Very recent
+  if (minutesAgo < 5) return 'bg-green-400'              // Recent
+  if (minutesAgo < 15) return 'bg-yellow-400'            // Moderate
+  return 'bg-red-400'                                     // Stale
+}
+
+const getConnectionStatusIcon = (driver) => {
+  const lastSeen = new Date(driver.last_seen)
+  const now = new Date()
+  const minutesAgo = (now - lastSeen) / (1000 * 60)
+  
+  if (minutesAgo < 2) return '🟢'
+  if (minutesAgo < 5) return '🟡' 
+  return '🔴'
+}
+
+const getConnectionStatusClass = (driver) => {
+  const lastSeen = new Date(driver.last_seen)
+  const now = new Date()
+  const minutesAgo = (now - lastSeen) / (1000 * 60)
+  
+  if (minutesAgo < 2) return 'text-green-300'
+  if (minutesAgo < 5) return 'text-yellow-300'
+  return 'text-red-300'
+}
+
+const getConnectionStatusText = (driver) => {
+  const lastSeen = new Date(driver.last_seen)
+  const now = new Date()
+  const minutesAgo = (now - lastSeen) / (1000 * 60)
+  
+  if (minutesAgo < 1) return 'Live'
+  if (minutesAgo < 2) return 'Active'
+  if (minutesAgo < 5) return 'Recent'
+  if (minutesAgo < 15) return 'Delayed'
+  return 'Stale'
+}
+
+const getGpsStatusClass = (driver) => {
+  if (!driver.location_lat || !driver.location_lng) return 'text-red-300'
+  if (!driver.gps_accuracy) return 'text-yellow-300'
+  if (driver.gps_accuracy <= 10) return 'text-green-300'
+  if (driver.gps_accuracy <= 50) return 'text-yellow-300'
+  return 'text-red-300'
+}
+
+const getGpsStatusText = (driver) => {
+  if (!driver.location_lat || !driver.location_lng) return 'No GPS'
+  if (!driver.gps_accuracy) return 'GPS Only'
+  if (driver.gps_accuracy <= 10) return 'Excellent'
+  if (driver.gps_accuracy <= 50) return 'Good'
+  return 'Poor'
+}
+
+const getBatteryIcon = (driver) => {
+  if (!driver.battery_level) return '🔋'
+  if (driver.battery_level > 80) return '🔋'
+  if (driver.battery_level > 50) return '🔋'
+  if (driver.battery_level > 20) return '🪫'
+  return '🔋'
+}
+
+const getBatteryStatusClass = (driver) => {
+  if (!driver.battery_level) return 'text-gray-300'
+  if (driver.battery_level > 50) return 'text-green-300'
+  if (driver.battery_level > 20) return 'text-yellow-300'
+  return 'text-red-300'
+}
+
+const getBatteryStatusText = (driver) => {
+  if (!driver.battery_level) return 'Unknown'
+  return `${driver.battery_level}%`
+}
+
+const getActivityStatusText = (driver) => {
+  // Determine activity based on recent logs/breadcrumbs
+  const recentLogs = deliveryLogs.value.filter(log => 
+    log.driver_id === driver.driver_id && 
+    new Date(log.timestamp) > new Date(Date.now() - 30*60*1000) // Last 30 minutes
+  )
+  
+  const recentBreadcrumbs = breadcrumbs.value.filter(b => 
+    b.driver_id === driver.driver_id && 
+    new Date(b.timestamp) > new Date(Date.now() - 5*60*1000) // Last 5 minutes
+  )
+  
+  if (recentLogs.length > 0) {
+    const lastAction = recentLogs[0].action_type
+    return getActionTitle(lastAction)
+  }
+  
+  if (recentBreadcrumbs.length > 0) {
+    const avgSpeed = recentBreadcrumbs.reduce((sum, b) => sum + (b.speed_kmh || 0), 0) / recentBreadcrumbs.length
+    if (avgSpeed > 5) return 'Moving'
+    return 'Stationary'
+  }
+  
+  return 'Idle'
+}
+
+const getDriverActivitySummary = (driver) => {
+  const today = new Date().toISOString().split('T')[0]
+  
+  const todayLogs = deliveryLogs.value.filter(log => 
+    log.driver_id === driver.driver_id && 
+    log.timestamp?.startsWith(today)
+  ).length
+  
+  const todayBreadcrumbs = breadcrumbs.value.filter(b => 
+    b.driver_id === driver.driver_id && 
+    b.timestamp?.startsWith(today)
+  ).length
+  
+  return `${todayLogs} actions, ${todayBreadcrumbs} GPS points`
+}
+
+const getDriverWarnings = (driver) => {
+  const warnings = []
+  const lastSeen = new Date(driver.last_seen)
+  const now = new Date()
+  const minutesAgo = (now - lastSeen) / (1000 * 60)
+  
+  // Connection warnings
+  if (minutesAgo > 15) {
+    warnings.push('Poor connection')
+  }
+  
+  // GPS warnings
+  if (!driver.location_lat || !driver.location_lng) {
+    warnings.push('Missing GPS coordinates')
+  } else if (driver.gps_accuracy && driver.gps_accuracy > 100) {
+    warnings.push('Poor GPS accuracy')
+  }
+  
+  // Battery warnings
+  if (driver.battery_level && driver.battery_level < 20) {
+    warnings.push('Low battery')
+  }
+  
+  // Activity warnings
+  const recentActivity = deliveryLogs.value.filter(log => 
+    log.driver_id === driver.driver_id && 
+    new Date(log.timestamp) > new Date(Date.now() - 2*60*60*1000) // Last 2 hours
+  ).length
+  
+  if (recentActivity === 0 && minutesAgo < 30) {
+    warnings.push('Online but inactive')
+  }
+  
+  return warnings
+}
+
+const formatTimeAgo = (timestamp) => {
+  if (!timestamp) return 'Never'
+  
+  const now = new Date()
+  const time = new Date(timestamp)
+  const diffMs = now - time
+  const diffMins = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+  
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  return `${diffDays}d ago`
+}
+
+const sendGhostMessage = async (driverId) => {
+  const message = prompt('Send message to driver:')
+  if (!message) return
+  
+  try {
+    await supabase
+      .from('ghost_commands')
+      .insert({
+        driver_id: driverId,
+        action: 'SEND_MESSAGE',
+        message: message,
+        auto_triggered: false,
+        created_at: new Date().toISOString()
+      })
+    
+    alert('✅ Message sent to driver!')
+  } catch (error) {
+    console.error('Error sending ghost message:', error)
+    alert('❌ Failed to send message')
+  }
+}
+
+// Initialize with auto-refresh
 onMounted(() => {
   refreshData()
+  
+  // Auto-refresh every 30 seconds for live tracking
+  const interval = setInterval(async () => {
+    if (selectedTab.value === 'live') {
+      console.log('🔄 Auto-refreshing driver status...')
+      await fetchOnlineDrivers()
+    }
+  }, 30000)
+  
+  // Cleanup interval on unmount
+  onUnmounted(() => {
+    clearInterval(interval)
+  })
 })
 </script> 
