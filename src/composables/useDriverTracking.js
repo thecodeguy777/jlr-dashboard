@@ -231,10 +231,20 @@ export function useDriverTracking() {
     
     // Start breadcrumbs immediately
     if (!breadcrumbInterval) {
-      logBreadcrumb() // Initial breadcrumb
+      logBreadcrumb({
+        auto_tracking: true,
+        trigger: trigger,
+        metadata: metadata,
+        note: `Auto-tracking started: ${trigger}`
+      })
       
       breadcrumbInterval = setInterval(() => {
-        logBreadcrumb() // Regular breadcrumb
+        logBreadcrumb({
+          auto_tracking: true,
+          trigger: trigger,
+          movement_detected: isMoving.value,
+          note: 'Auto-tracking breadcrumb'
+        })
       }, 30000) // Every 30 seconds
     }
     
@@ -488,8 +498,8 @@ export function useDriverTracking() {
     // Implementation would involve geofencing logic
   }
 
-  // SIMPLIFIED breadcrumb logging for alpha test
-  const logBreadcrumb = async () => {
+  // Enhanced breadcrumb logging with full schema support
+  const logBreadcrumb = async (additionalData = {}) => {
     if (!isGpsAvailable.value || !currentLocation.value || !isActiveRoute.value) {
       console.log('🍞 Breadcrumb skipped: GPS unavailable or route inactive')
       return
@@ -501,7 +511,7 @@ export function useDriverTracking() {
     }
 
     const now = new Date()
-    // SIMPLIFIED: Only use columns that exist in database
+    // Full breadcrumb data (your database has all these columns!)
     const breadcrumbData = {
       driver_id: driverId.value,
       timestamp: now.toISOString(),
@@ -511,11 +521,34 @@ export function useDriverTracking() {
       battery_level: batteryLevel.value,
       signal_status: signalStatus.value,
       is_active_route: isActiveRoute.value,
-      synced: isOnline.value
+      synced: isOnline.value,
+      // Advanced tracking fields
+      auto_tracking: autoTrackingMode.value,
+      tracking_trigger: trackingTrigger.value,
+      movement_detected: isMoving.value,
+      ghost_control_active: ghostControlActive.value,
+      // Merge any additional data
+      ...additionalData
     }
 
-    // SIMPLIFIED: Skip speed/distance calculation for alpha test
-    // (These columns may not exist in database yet)
+    // Calculate speed and distance if we have a previous breadcrumb
+    if (lastBreadcrumb.value) {
+      const distance = calculateDistance(
+        lastBreadcrumb.value.latitude,
+        lastBreadcrumb.value.longitude,
+        currentLocation.value.latitude,
+        currentLocation.value.longitude
+      )
+
+      const timeSeconds = (now - new Date(lastBreadcrumb.value.timestamp)) / 1000
+      const speed = calculateSpeed(distance, timeSeconds)
+
+      breadcrumbData.distance_from_last = Math.round(distance * 100) / 100 // Round to 2 decimals
+      breadcrumbData.speed_kmh = Math.round(speed * 100) / 100 // Round to 2 decimals
+
+      totalDistance.value += distance
+      currentSpeed.value = speed
+    }
 
     try {
       if (isOnline.value) {
@@ -528,7 +561,7 @@ export function useDriverTracking() {
           throw error
         }
         
-        console.log('✅ GPS breadcrumb logged for admin visibility:', data)
+        console.log('✅ Enhanced GPS breadcrumb logged with speed/distance:', data)
       } else {
         console.log('📦 Storing breadcrumb locally (offline)')
         const stored = JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]')
@@ -911,10 +944,16 @@ export function useDriverTracking() {
       
       // Start breadcrumb interval for alpha test visibility
       if (!breadcrumbInterval) {
-        logBreadcrumb() // Initial breadcrumb
+        logBreadcrumb({
+          trigger: 'work_session_active',
+          note: 'Clock-in breadcrumb for admin visibility'
+        })
         
         breadcrumbInterval = setInterval(() => {
-          logBreadcrumb() // Regular breadcrumb every 30 seconds
+          logBreadcrumb({
+            trigger: 'work_session_active',
+            note: 'Regular work session breadcrumb'
+          })
         }, 30000) // Every 30 seconds
       }
       
