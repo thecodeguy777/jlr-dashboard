@@ -229,22 +229,26 @@ export function useDriverTracking() {
     // Save tracking state
     saveTrackingState()
     
-    // Start breadcrumbs immediately
+    // Start MOVEMENT-BASED breadcrumbs immediately
     if (!breadcrumbInterval) {
+      console.log('🚶‍♂️ MOVEMENT DETECTED - Starting breadcrumb logging every 30 seconds')
+      
       logBreadcrumb({
-        auto_tracking: true,
         trigger: trigger,
-        metadata: metadata,
-        note: `Auto-tracking started: ${trigger}`
+        note: `Movement tracking started: ${trigger}`
       })
       
       breadcrumbInterval = setInterval(() => {
-        logBreadcrumb({
-          auto_tracking: true,
-          trigger: trigger,
-          movement_detected: isMoving.value,
-          note: 'Auto-tracking breadcrumb'
-        })
+        // Only log if still moving or in active route
+        if (isMoving.value || trigger === 'work_session_active') {
+          console.log('🍞 MOVEMENT BREADCRUMB - logging because driver is moving or working')
+          logBreadcrumb({
+            trigger: trigger,
+            note: `Movement tracking: ${isMoving.value ? 'Moving' : 'Stationary'}`
+          })
+        } else {
+          console.log('⏸️ Skipping breadcrumb - driver not moving')
+        }
       }, 30000) // Every 30 seconds
     }
     
@@ -1004,26 +1008,19 @@ export function useDriverTracking() {
       autoTrackingMode.value = true
       trackingTrigger.value = 'work_session_active'
       
-      // ROBUST breadcrumb tracking for alpha test visibility
+      // MOVEMENT-BASED breadcrumb tracking - only log when moving or immediately on clock-in
       if (!breadcrumbInterval) {
-        // Log immediate breadcrumb for clock-in
+        // Log immediate breadcrumb for clock-in (for admin visibility)
         console.log('🍞 LOGGING IMMEDIATE CLOCK-IN BREADCRUMB...')
         await logBreadcrumb({
-          trigger: 'work_session_active',
-          note: 'Clock-in breadcrumb for admin visibility',
-          showUserError: true // Show errors to user for debugging
+          trigger: 'work_session_start',
+          note: 'Clock-in breadcrumb - tracking active',
+          showUserError: true
         })
         
-        // Start regular interval
-        console.log('🍞 STARTING BREADCRUMB INTERVAL (every 30 seconds)...')
-        breadcrumbInterval = setInterval(async () => {
-          console.log('🍞 INTERVAL BREADCRUMB triggered...')
-          await logBreadcrumb({
-            trigger: 'work_session_active',
-            note: 'Regular work session breadcrumb',
-            showUserError: false // Don't spam user with regular breadcrumb errors
-          })
-        }, 30000) // Every 30 seconds
+        // DON'T start continuous interval - only log when movement detected
+        console.log('🍞 Breadcrumb tracking enabled - will log when movement detected')
+        console.log('⚠️ Static breadcrumbs disabled - only movement-based logging')
       }
       
       return { success: true, sessionId: data.id }
