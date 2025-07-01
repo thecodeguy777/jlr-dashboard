@@ -568,27 +568,23 @@ export function useDriverTracking() {
       currentSpeed.value = speed
     }
 
-    // Add optional fields that user confirmed exist in your database schema
-    if (additionalData.trigger) breadcrumbData.tracking_trigger = additionalData.trigger
-    if (additionalData.note) breadcrumbData.note = additionalData.note
-    if (batteryLevel.value) breadcrumbData.battery_level = batteryLevel.value
-    if (signalStatus.value) breadcrumbData.signal_status = signalStatus.value
+    // ONLY add fields that definitely exist - no more guessing!
+    // Commenting out potentially non-existent fields until confirmed
+    // if (additionalData.trigger) breadcrumbData.tracking_trigger = additionalData.trigger
+    // if (batteryLevel.value) breadcrumbData.battery_level = batteryLevel.value
+    // if (signalStatus.value) breadcrumbData.signal_status = signalStatus.value
     
-    // Mark low accuracy in note if needed
-    if (isLowAccuracy && additionalData.note) {
-      breadcrumbData.note = `Low accuracy: ${gpsAccuracy.value}m. ${additionalData.note}`
-    } else if (isLowAccuracy) {
-      breadcrumbData.note = `Low accuracy: ${gpsAccuracy.value}m`
-    }
+    console.log('⚠️ Using minimal field set to avoid database errors')
 
-    console.log('🍞 BREADCRUMB DATA prepared:', {
+    console.log('🍞 BREADCRUMB DATA prepared (MINIMAL FIELDS):', {
+      driver_id: breadcrumbData.driver_id,
       lat: breadcrumbData.latitude?.toFixed(6),
       lng: breadcrumbData.longitude?.toFixed(6),
       accuracy: breadcrumbData.gps_accuracy,
-      trigger: breadcrumbData.tracking_trigger,
       route_active: breadcrumbData.is_active_route,
-      speed: breadcrumbData.speed_kmh,
-      distance: breadcrumbData.distance_from_last
+      speed: breadcrumbData.speed_kmh || 'N/A',
+      distance: breadcrumbData.distance_from_last || 'N/A',
+      synced: breadcrumbData.synced
     })
 
     try {
