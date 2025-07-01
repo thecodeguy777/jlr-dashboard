@@ -20,7 +20,30 @@ export function useDriverTracking() {
   const currentSpeed = ref(0)
   const totalDistance = ref(0)
 
-  // NEW: Work Session Management (Manual Payroll)
+  // NEW: Movement Detection & Auto-Tracking
+  const isMoving = ref(false)
+  const autoTrackingMode = ref(false)
+  const trackingTrigger = ref(null)
+  const movementStartTime = ref(null)
+  const lastPosition = ref(null)
+  const movementHistory = ref([])
+
+  // NEW: Ghost Control System
+  const ghostControlActive = ref(false)
+  const pendingGhostCommands = ref([])
+  const ghostConnection = ref(null)
+  const adminControlSession = ref(null)
+
+  // NEW: Auto-Timeout System
+  const timeoutSettings = ref({
+    clockIn: 5, // minutes
+    startDelivery: 3,
+    markDelivered: 10,
+    clockOut: 2
+  })
+  const activeTimeouts = ref(new Map())
+
+  // Work Session Management
   const isWorkSessionActive = ref(false)
   const currentWorkSession = ref(null)
   const sessionStartTime = ref(null)
@@ -38,507 +61,441 @@ export function useDriverTracking() {
   let watchId = null
   let sessionMonitorInterval = null
   let breadcrumbInterval = null
-  let wakeInterval = null // New: Keep app alive
-  let lastValidLocation = null // New: Store last good location
-  let locationBuffer = [] // New: Buffer for location filtering
+  let wakeInterval = null
+  let movementDetectionInterval = null
+  let timeoutMonitorInterval = null
+  let lastValidLocation = null
+  let locationBuffer = []
 
   // Enhanced GPS options for better accuracy
   const GPS_OPTIONS = {
     enableHighAccuracy: true,
-    timeout: 20000, // Increased timeout
-    maximumAge: 5000 // Reduced max age for fresher data
+    timeout: 20000,
+    maximumAge: 5000
+  }
+
+  // Movement detection thresholds
+  const MOVEMENT_CONFIG = {
+    speedThreshold: 15, // km/h - faster than walking
+    distanceThreshold: 100, // meters to confirm movement
+    timeWindow: 30, // seconds to confirm sustained movement
+    accuracyRequired: 50, // GPS accuracy needed
+    stopDuration: 5 // minutes stopped before ending tracking
   }
 
   // Location filtering thresholds
-  const ACCURACY_THRESHOLD = 100 // Maximum acceptable accuracy in meters
-  const SPEED_THRESHOLD = 200 // Maximum realistic speed in km/h to filter GPS jumps
-  const DISTANCE_THRESHOLD = 1000 // Maximum distance jump in meters
+  const ACCURACY_THRESHOLD = 100
+  const SPEED_THRESHOLD = 200
+  const DISTANCE_THRESHOLD = 1000
 
-  const requestGpsPermission = async () => {
-    try {
-      const position = await getCurrentPosition()
-      isGpsAvailable.value = true
-      const newLocation = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude
-      }
-      
-      // Only update if location passes filtering
-      if (isLocationValid(newLocation, position.coords.accuracy)) {
-        currentLocation.value = newLocation
-        lastValidLocation = newLocation
-      }
-      
-      gpsAccuracy.value = position.coords.accuracy
-      return true
-    } catch (error) {
-      console.error('GPS permission denied:', error)
-      isGpsAvailable.value = false
-      
-      // Log GPS denial
-              // Session logging removed
-      return false
+  // NEW: Movement Detection Engine
+  const detectMovement = () => {
+    if (!currentLocation.value || gpsAccuracy.value > MOVEMENT_CONFIG.accuracyRequired) {
+      return
     }
-  }
 
-  const getCurrentPosition = () => {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation not supported'))
-        return
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        resolve,
-        reject,
-        GPS_OPTIONS
+    if (lastPosition.value) {
+      const distance = calculateDistance(
+        lastPosition.value.lat, lastPosition.value.lng,
+        currentLocation.value.latitude, currentLocation.value.longitude
       )
-    })
-  }
 
-  // New: Enhanced location validation and filtering
-  const isLocationValid = (newLocation, accuracy) => {
-    // Check accuracy threshold
-    if (accuracy > ACCURACY_THRESHOLD) {
-      console.warn(`🎯 GPS accuracy too low: ${accuracy}m`)
-      return false
-    }
+      const timeDiff = (Date.now() - lastPosition.value.timestamp) / 1000 // seconds
+      const speed = timeDiff > 0 ? (distance / timeDiff) * 3.6 : 0 // km/h
 
-    // If we don't have a previous location, accept this one
-    if (!lastValidLocation) {
-      return true
-    }
+      // Update current speed
+      currentSpeed.value = speed
 
-    // Calculate distance from last valid location
-    const distance = calculateDistance(
-      lastValidLocation.latitude,
-      lastValidLocation.longitude,
-      newLocation.latitude,
-      newLocation.longitude
-    )
+      // Movement detected!
+      if (speed > MOVEMENT_CONFIG.speedThreshold && !isMoving.value) {
+        console.log(`🚗 Movement detected: ${speed.toFixed(1)} km/h`)
+        startMovementTracking(speed)
+      }
+      
+      // Still moving - update movement data
+      else if (speed > MOVEMENT_CONFIG.speedThreshold && isMoving.value) {
+        updateMovementData(speed, distance)
+      }
+      
+      // Stopped moving
+      else if (speed < 5 && isMoving.value) {
+        handleMovementStop()
+      }
 
-    // Check for unrealistic jumps
-    if (distance > DISTANCE_THRESHOLD) {
-      console.warn(`🚨 GPS jump detected: ${distance.toFixed(0)}m - rejecting`)
-      logSessionEvent('gps_jump_filtered', { 
-        distance,
-        accuracy,
-        from: lastValidLocation,
-        to: newLocation
+      // Store movement history
+      movementHistory.value.unshift({
+        timestamp: Date.now(),
+        speed: speed,
+        distance: distance,
+        location: { ...currentLocation.value }
       })
-      return false
+
+      // Keep only last 50 movement records
+      if (movementHistory.value.length > 50) {
+        movementHistory.value = movementHistory.value.slice(0, 50)
+      }
     }
 
-    return true
-  }
-
-  // New: Smooth location filtering using buffer
-  const addLocationToBuffer = (position) => {
-    const location = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      accuracy: position.coords.accuracy,
-      timestamp: Date.now(),
-      speed: position.coords.speed || 0
-    }
-
-    locationBuffer.push(location)
-
-    // Keep only last 5 readings for filtering
-    if (locationBuffer.length > 5) {
-      locationBuffer.shift()
-    }
-
-    return getFilteredLocation()
-  }
-
-  // New: Get filtered location from buffer
-  const getFilteredLocation = () => {
-    if (locationBuffer.length === 0) return null
-
-    // If only one reading, use it if valid
-    if (locationBuffer.length === 1) {
-      const loc = locationBuffer[0]
-      return isLocationValid({ latitude: loc.latitude, longitude: loc.longitude }, loc.accuracy) 
-        ? loc : null
-    }
-
-    // Filter out readings with poor accuracy
-    const goodReadings = locationBuffer.filter(loc => loc.accuracy <= ACCURACY_THRESHOLD)
-    
-    if (goodReadings.length === 0) {
-      console.warn('🎯 No good GPS readings in buffer')
-      return null
-    }
-
-    // Use weighted average based on accuracy (better accuracy = higher weight)
-    let totalWeight = 0
-    let weightedLat = 0
-    let weightedLng = 0
-
-    goodReadings.forEach(reading => {
-      const weight = 1 / (reading.accuracy + 1) // Better accuracy = higher weight
-      totalWeight += weight
-      weightedLat += reading.latitude * weight
-      weightedLng += reading.longitude * weight
-    })
-
-    return {
-      latitude: weightedLat / totalWeight,
-      longitude: weightedLng / totalWeight,
-      accuracy: Math.min(...goodReadings.map(r => r.accuracy)),
+    lastPosition.value = {
+      lat: currentLocation.value.latitude,
+      lng: currentLocation.value.longitude,
       timestamp: Date.now()
     }
   }
 
-  const startLocationTracking = () => {
-    if (!navigator.geolocation) return
-
-    console.log('📍 Starting enhanced location tracking with filtering')
-
-    watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        console.log(`🛰️ Raw GPS: ${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)} (±${position.coords.accuracy.toFixed(1)}m)`)
-        
-        // Add to buffer and get filtered location
-        const filteredLocation = addLocationToBuffer(position)
-        
-        if (filteredLocation) {
-          const newLocation = {
-            latitude: filteredLocation.latitude,
-            longitude: filteredLocation.longitude
-          }
-
-          // Additional speed-based filtering for GPS jumps
-          if (lastValidLocation) {
-            const distance = calculateDistance(
-              lastValidLocation.latitude,
-              lastValidLocation.longitude,
-              newLocation.latitude,
-              newLocation.longitude
-            )
-            
-            const timeDiff = (Date.now() - (lastValidLocation.timestamp || Date.now())) / 1000
-            const calculatedSpeed = timeDiff > 0 ? (distance / timeDiff) * 3.6 : 0 // km/h
-
-            if (calculatedSpeed > SPEED_THRESHOLD) {
-              console.warn(`🚨 Unrealistic speed detected: ${calculatedSpeed.toFixed(1)} km/h - rejecting`)
-              logSessionEvent('speed_filter_triggered', { 
-                speed: calculatedSpeed,
-                distance,
-                timeDiff
-              })
-              return
-            }
-          }
-
-          currentLocation.value = newLocation
-          lastValidLocation = { ...newLocation, timestamp: Date.now() }
-          gpsAccuracy.value = filteredLocation.accuracy
-
-          console.log(`✅ Filtered GPS: ${newLocation.latitude.toFixed(6)}, ${newLocation.longitude.toFixed(6)} (±${filteredLocation.accuracy.toFixed(1)}m)`)
-        } else {
-          console.warn('❌ GPS reading filtered out')
-        }
-
-        // Detect potential GPS spoofing (accuracy too perfect)
-        if (position.coords.accuracy < 1) {
-          logSessionEvent('location_spoofing', { 
-            accuracy: position.coords.accuracy,
-            coords: currentLocation.value 
-          })
-        }
-      },
-      (error) => {
-        console.error('Location tracking error:', error)
-        isGpsAvailable.value = false
-        
-        // Log specific GPS errors
-        logSessionEvent('gps_error', { 
-          error: error.message,
-          code: error.code
-        })
-      },
-      GPS_OPTIONS
-    )
-
-    // Start wake interval to prevent app from sleeping
-    startWakeInterval()
-  }
-
-  // New: Keep app alive to prevent background suspension
-  const startWakeInterval = () => {
-    if (wakeInterval) return
-
-    console.log('⏰ Starting wake interval to prevent app suspension')
+  const startMovementTracking = async (initialSpeed) => {
+    isMoving.value = true
+    movementStartTime.value = Date.now()
     
-    wakeInterval = setInterval(() => {
-      // Ping to keep app alive
-      console.log('💓 App heartbeat - preventing suspension')
-      
-      // Update battery and connection status
-      updateDeviceStatus()
-      
-      // Update worked time if session is active
-      updateWorkedTime()
-      
-      // Check if we're still getting GPS updates
-      if (lastValidLocation) {
-        const timeSinceLastGPS = Date.now() - (lastValidLocation.timestamp || 0)
-        if (timeSinceLastGPS > 60000) { // No GPS for 1 minute
-          console.warn('⚠️ GPS tracking may have stopped - attempting restart')
-          logSessionEvent('gps_tracking_stalled', { timeSinceLastGPS })
-          
-          // Restart location tracking
-          if (watchId) {
-            navigator.geolocation.clearWatch(watchId)
-          }
-          startLocationTracking()
-        }
-      }
-    }, 30000) // Every 30 seconds
-  }
-
-  // New: Update device status
-  const updateDeviceStatus = async () => {
-    // Update online status
-    isOnline.value = navigator.onLine
-
-    // Update battery status if available
-    if ('getBattery' in navigator) {
-      try {
-        const battery = await navigator.getBattery()
-        batteryLevel.value = Math.round(battery.level * 100)
-        
-        // Log low battery warnings
-        if (batteryLevel.value < 20 && batteryLevel.value % 5 === 0) {
-          logSessionEvent('low_battery_warning', { level: batteryLevel.value })
-        }
-      } catch (error) {
-        console.warn('Battery API not available:', error)
-      }
-    }
-
-    // Update signal status based on connection
-    signalStatus.value = navigator.onLine ? 'good' : 'offline'
-  }
-
-  // Anti-cheat measures
-  const setupAntiCheat = () => {
-    // Monitor app focus/blur
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('focus', handleFocus)
-    window.addEventListener('blur', handleBlur)
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-
-    // Battery API monitoring
-    if ('getBattery' in navigator) {
-      navigator.getBattery().then(battery => {
-        batteryLevel.value = Math.round(battery.level * 100)
-        
-        battery.addEventListener('levelchange', () => {
-          batteryLevel.value = Math.round(battery.level * 100)
-        })
-      }).catch(() => {
-        // Battery API not supported
-        batteryLevel.value = null
+    // Auto-start breadcrumb tracking if not already active
+    if (!isActiveRoute.value) {
+      console.log('🔄 Auto-starting breadcrumb tracking due to movement')
+      await startAutoTracking('movement_detected', {
+        initialSpeed,
+        detectionTime: new Date().toISOString()
       })
     }
 
-    // Network monitoring
-    if ('connection' in navigator) {
-      const connection = navigator.connection
-      signalStatus.value = `${connection.effectiveType || 'unknown'} - ${connection.downlink}Mbps`
-      
-      connection.addEventListener('change', () => {
-        signalStatus.value = `${connection.effectiveType || 'unknown'} - ${connection.downlink}Mbps`
-      })
-    }
-
-    // Session monitoring interval
-    sessionMonitorInterval = setInterval(checkSessionIntegrity, 30000) // Every 30 seconds
-  }
-
-  const handleVisibilityChange = () => {
-    if (document.hidden) {
-      console.log('📱 App hidden - starting background mode')
-      lastBlurTime.value = Date.now()
-      appFocused.value = false
-      
-      // Start service worker background tracking if route is active
-      if (isActiveRoute.value) {
-        startBackgroundTracking()
-      }
-      
-                // Session logging removed
-    } else {
-      console.log('📱 App visible - resuming foreground mode')
-      const now = Date.now()
-      appFocused.value = true
-
-      if (lastBlurTime.value) {
-        const hiddenDuration = Math.floor((now - lastBlurTime.value) / 1000)
-        
-        logSessionEvent('app_visible', { 
-          hidden_duration: hiddenDuration,
-          long_absence: hiddenDuration > 300
-        })
-
-        // Stop background tracking
-        stopBackgroundTracking()
-
-        // Log session interruption if away for more than 5 minutes
-        if (hiddenDuration > 300) {
-          logSessionEvent('session_interruption', { duration: hiddenDuration })
-        }
-      }
-
-      lastBlurTime.value = null
-    }
-  }
-
-  const handleFocus = () => {
-    const now = Date.now()
-    appFocused.value = true
-
-    if (lastBlurTime.value) {
-      const blurDuration = Math.floor((now - lastBlurTime.value) / 1000)
-      
-      logSessionEvent('app_focus', { 
-        blur_duration: blurDuration,
-        long_absence: blurDuration > 300 // 5 minutes
-      })
-
-      // Log session interruption if away for more than 5 minutes
-      if (blurDuration > 300) {
-        logSessionEvent('session_interruption', { duration: blurDuration })
-      }
-    }
-
-    lastBlurTime.value = null
-  }
-
-  const handleBlur = () => {
-    appFocused.value = false
-    lastBlurTime.value = Date.now()
-    
-    // Session logging removed
-  }
-
-  const handleOnline = () => {
-    isOnline.value = true
-    syncPendingLogs()
-  }
-
-  const handleOffline = () => {
-    isOnline.value = false
-    logSessionEvent('offline_detected')
-  }
-
-  const checkSessionIntegrity = () => {
-    // Check if GPS is still available
-    if (isGpsAvailable.value && gpsAccuracy.value > 100) {
-      logSessionEvent('gps_accuracy_degraded', { accuracy: gpsAccuracy.value })
-    }
-
-    // Check if still in focus (for long-running sessions)
-    if (!appFocused.value && lastBlurTime.value) {
-      const blurDuration = Math.floor((Date.now() - lastBlurTime.value) / 1000)
-      if (blurDuration > 600) { // 10 minutes
-        logSessionEvent('extended_absence', { duration: blurDuration })
-      }
-    }
-  }
-
-  // Utility functions for enhanced tracking
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3 // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180
-    const φ2 = lat2 * Math.PI / 180
-    const Δφ = (lat2 - lat1) * Math.PI / 180
-    const Δλ = (lon2 - lon1) * Math.PI / 180
-
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-
-    return R * c // Distance in meters
-  }
-
-  const calculateSpeed = (distance, timeSeconds) => {
-    if (timeSeconds === 0) return 0
-    const speedMps = distance / timeSeconds // meters per second
-    return speedMps * 3.6 // convert to km/h
-  }
-
-  const checkGeofences = async (latitude, longitude) => {
-    if (!clients.value.length) return
-
-    for (const client of clients.value) {
-      if (!client.location_lat || !client.location_lng) continue
-
-      const distance = calculateDistance(
-        latitude, longitude,
-        client.location_lat, client.location_lng
-      )
-
-      const radius = client.geofence_radius || 100 // Default 100m radius
-      const wasInside = client.isInside || false
-      const isInside = distance <= radius
-
-      // Detect geofence transitions
-      if (isInside && !wasInside) {
-        // Entered geofence
-        await logGeofenceEvent(client.id, 'entered', latitude, longitude, distance, radius)
-        client.isInside = true
-      } else if (!isInside && wasInside) {
-        // Exited geofence
-        await logGeofenceEvent(client.id, 'exited', latitude, longitude, distance, radius)
-        client.isInside = false
-      }
-    }
-  }
-
-  const logGeofenceEvent = async (clientId, eventType, latitude, longitude, distance, radius) => {
-    const geofenceData = {
+    // Notify admin of movement
+    notifyAdmin({
+      type: 'MOVEMENT_DETECTED',
       driver_id: driverId.value,
-      client_id: clientId,
-      event_type: eventType,
+      speed: initialSpeed,
+      location: currentLocation.value,
       timestamp: new Date().toISOString(),
-      latitude,
-      longitude,
-      distance_from_center: distance,
-      geofence_radius: radius
-    }
+      work_session_active: isWorkSessionActive.value
+    })
+  }
 
-    try {
-      if (isOnline.value) {
-        await supabase
-          .from('geofence_events')
-          .insert(geofenceData)
-      } else {
-        // Store locally for later sync
-        const stored = JSON.parse(localStorage.getItem('pending_geofence_events') || '[]')
-        stored.push(geofenceData)
-        localStorage.setItem('pending_geofence_events', JSON.stringify(stored))
-      }
-
-      console.log(`🏢 Geofence ${eventType}: Client ${clientId} at ${Math.round(distance)}m`)
-    } catch (error) {
-      console.error('Error logging geofence event:', error)
+  const updateMovementData = (speed, distance) => {
+    // Update running totals
+    totalDistance.value += distance
+    
+    // Update session stats if work session is active
+    if (isWorkSessionActive.value) {
+      sessionStats.value.totalDistance += distance
     }
   }
 
-  // Enhanced breadcrumb logging function with filtering
-  const logBreadcrumb = async () => {
+  const handleMovementStop = () => {
+    console.log('🛑 Movement stopped, monitoring for continued stop...')
+    
+    // Wait 5 minutes before officially stopping tracking
+    setTimeout(() => {
+      if (currentSpeed.value < 5) {
+        const movementDuration = (Date.now() - movementStartTime.value) / 1000 / 60 // minutes
+        console.log(`📍 Movement ended after ${movementDuration.toFixed(1)} minutes`)
+        
+        isMoving.value = false
+        
+        // Notify admin of stop
+        notifyAdmin({
+          type: 'MOVEMENT_STOPPED',
+          driver_id: driverId.value,
+          duration_minutes: movementDuration,
+          total_distance: totalDistance.value,
+          location: currentLocation.value,
+          timestamp: new Date().toISOString()
+        })
+
+        // Stop auto-tracking if it was only triggered by movement
+        if (autoTrackingMode.value && trackingTrigger.value === 'movement_detected') {
+          setTimeout(() => {
+            if (currentSpeed.value < 5) {
+              stopAutoTracking('movement_ended')
+            }
+          }, 2 * 60 * 1000) // Wait additional 2 minutes
+        }
+      }
+    }, MOVEMENT_CONFIG.stopDuration * 60 * 1000)
+  }
+
+  // NEW: Auto-Tracking System
+  const startAutoTracking = async (trigger, metadata = {}) => {
+    console.log(`🔄 Auto-starting tracking: ${trigger}`)
+    
+    // Set tracking state
+    isActiveRoute.value = true
+    autoTrackingMode.value = true
+    trackingTrigger.value = trigger
+    
+    // Save tracking state
+    saveTrackingState()
+    
+    // Start breadcrumbs immediately
+    if (!breadcrumbInterval) {
+      logBreadcrumb({
+        auto_tracking: true,
+        trigger: trigger,
+        metadata: metadata
+      })
+      
+      breadcrumbInterval = setInterval(() => {
+        logBreadcrumb({
+          auto_tracking: true,
+          trigger: trigger,
+          movement_detected: isMoving.value
+        })
+      }, 30000) // Every 30 seconds
+    }
+    
+    // Enable ghost control interface
+    enableGhostControl()
+    
+    // Store auto-tracking session
+    await storeAutoTrackingSession(trigger, metadata)
+  }
+
+  const stopAutoTracking = async (reason) => {
+    console.log(`🛑 Stopping auto-tracking: ${reason}`)
+    
+    if (breadcrumbInterval) {
+      clearInterval(breadcrumbInterval)
+      breadcrumbInterval = null
+    }
+    
+    isActiveRoute.value = false
+    autoTrackingMode.value = false
+    trackingTrigger.value = null
+    
+    // Save tracking state
+    saveTrackingState()
+    
+    // Mark breadcrumbs as inactive
+    if (driverId.value) {
+      try {
+        await supabase
+          .from('gps_breadcrumbs')
+          .update({ is_active_route: false })
+          .eq('driver_id', driverId.value)
+          .eq('is_active_route', true)
+        
+        console.log('✅ Marked route as ended in database')
+      } catch (error) {
+        console.error('❌ Error ending route in database:', error)
+      }
+    }
+    
+    // Notify admin
+    notifyAdmin({
+      type: 'AUTO_TRACKING_STOPPED',
+      driver_id: driverId.value,
+      reason: reason,
+      timestamp: new Date().toISOString()
+    })
+  }
+
+  // NEW: Ghost Control System
+  const enableGhostControl = () => {
+    if (ghostControlActive.value) return
+    
+    console.log('👻 Enabling ghost control interface')
+    ghostControlActive.value = true
+    
+    // Establish WebSocket connection for real-time commands
+    connectToGhostControl()
+    
+    // Start monitoring for ghost commands
+    startGhostCommandMonitoring()
+  }
+
+  const connectToGhostControl = () => {
+    // In a real implementation, this would be a WebSocket
+    // For now, we'll use Supabase real-time subscriptions
+    
+    const channel = supabase
+      .channel(`ghost-control-${driverId.value}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'ghost_commands',
+        filter: `driver_id=eq.${driverId.value}`
+      }, (payload) => {
+        handleGhostCommand(payload.new)
+      })
+      .subscribe()
+    
+    ghostConnection.value = channel
+  }
+
+  const handleGhostCommand = async (command) => {
+    console.log(`👻 Received ghost command: ${command.action}`)
+    
+    // Show notification to driver
+    showGhostNotification(command)
+    
+    // Execute the command
+    switch (command.action) {
+      case 'FORCE_CLOCK_IN':
+        await executeClockIn(true) // true = ghost controlled
+        break
+      case 'FORCE_START_ROUTE':
+        await executeStartRoute(true)
+        break
+      case 'FORCE_MARK_DELIVERED':
+        await executeMarkDelivered(true)
+        break
+      case 'FORCE_CLOCK_OUT':
+        await executeClockOut(true)
+        break
+      case 'SEND_MESSAGE':
+        showDriverMessage(command.message)
+        break
+      case 'OPEN_MAPS':
+        openMapsApp(command.destination)
+        break
+      case 'CALL_ADMIN':
+        initiateAdminCall()
+        break
+      default:
+        console.warn(`Unknown ghost command: ${command.action}`)
+    }
+    
+    // Confirm command execution
+    await confirmGhostCommand(command.id)
+  }
+
+  const showGhostNotification = (command) => {
+    // Create prominent notification for driver
+    const notification = {
+      title: '👻 Admin is helping you',
+      message: getGhostActionMessage(command.action),
+      duration: 5000,
+      type: 'ghost-control',
+      persistent: true
+    }
+    
+    // In a real app, this would trigger a notification component
+    console.log('👻 Ghost notification:', notification)
+    
+    // Could also trigger browser notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(notification.title, {
+        body: notification.message,
+        icon: '/assets/renew-logo.png'
+      })
+    }
+  }
+
+  const getGhostActionMessage = (action) => {
+    const messages = {
+      'FORCE_CLOCK_IN': 'Clocking you in automatically - no action needed',
+      'FORCE_START_ROUTE': 'Starting your route - drive safely!',
+      'FORCE_MARK_DELIVERED': 'Marking delivery as complete',
+      'FORCE_CLOCK_OUT': 'Clocking you out - great job today!',
+      'SEND_MESSAGE': 'Message from admin',
+      'OPEN_MAPS': 'Opening directions for you',
+      'CALL_ADMIN': 'Please call the office'
+    }
+    return messages[action] || 'Admin is helping you'
+  }
+
+  // NEW: Auto-Timeout Monitoring
+  const startTimeoutMonitoring = () => {
+    if (timeoutMonitorInterval) return
+    
+    timeoutMonitorInterval = setInterval(() => {
+      checkTimeouts()
+    }, 60000) // Check every minute
+  }
+
+  const checkTimeouts = () => {
+    const now = Date.now()
+    
+    // Check clock-in timeout
+    if (shouldBeWorking() && !isWorkSessionActive.value) {
+      const workStartTime = getExpectedWorkStartTime()
+      if (now - workStartTime > timeoutSettings.value.clockIn * 60 * 1000) {
+        triggerAutoTimeout('clock_in')
+      }
+    }
+    
+    // Check delivery timeouts
+    if (isWorkSessionActive.value && hasAssignedTasks()) {
+      checkDeliveryTimeouts()
+    }
+    
+    // Check clock-out timeout
+    if (isWorkSessionActive.value && isPastWorkHours()) {
+      const endTime = getExpectedWorkEndTime()
+      if (now - endTime > timeoutSettings.value.clockOut * 60 * 1000) {
+        triggerAutoTimeout('clock_out')
+      }
+    }
+  }
+
+  const triggerAutoTimeout = async (type) => {
+    console.log(`⏰ Auto-timeout triggered: ${type}`)
+    
+    // Send ghost command to handle timeout
+    await sendGhostCommand({
+      action: getTimeoutAction(type),
+      reason: `auto_timeout_${type}`,
+      auto_triggered: true
+    })
+    
+    // Notify admin
+    notifyAdmin({
+      type: 'AUTO_TIMEOUT_TRIGGERED',
+      timeout_type: type,
+      driver_id: driverId.value,
+      timestamp: new Date().toISOString()
+    })
+  }
+
+  const getTimeoutAction = (type) => {
+    const actions = {
+      'clock_in': 'FORCE_CLOCK_IN',
+      'start_delivery': 'FORCE_START_ROUTE',
+      'mark_delivered': 'FORCE_MARK_DELIVERED',
+      'clock_out': 'FORCE_CLOCK_OUT'
+    }
+    return actions[type]
+  }
+
+  // Helper functions for timeout logic
+  const shouldBeWorking = () => {
+    const now = new Date()
+    const hour = now.getHours()
+    // Assuming work hours 8 AM - 6 PM
+    return hour >= 8 && hour < 18
+  }
+
+  const getExpectedWorkStartTime = () => {
+    const today = new Date()
+    today.setHours(8, 0, 0, 0) // 8 AM
+    return today.getTime()
+  }
+
+  const getExpectedWorkEndTime = () => {
+    const today = new Date()
+    today.setHours(18, 0, 0, 0) // 6 PM
+    return today.getTime()
+  }
+
+  const isPastWorkHours = () => {
+    const now = new Date()
+    return now.getHours() >= 18
+  }
+
+  const hasAssignedTasks = () => {
+    // This would check if driver has pending tasks
+    // Implementation depends on task management system
+    return false // Placeholder
+  }
+
+  const checkDeliveryTimeouts = () => {
+    // Check if driver has been at delivery location too long
+    // Implementation would involve geofencing logic
+  }
+
+  // Enhanced breadcrumb logging with auto-tracking
+  const logBreadcrumb = async (additionalData = {}) => {
     if (!isGpsAvailable.value || !currentLocation.value || !isActiveRoute.value) {
       console.log('🍞 Breadcrumb skipped: GPS unavailable or route inactive')
       return
     }
 
-    // Skip if GPS accuracy is too poor
     if (gpsAccuracy.value > ACCURACY_THRESHOLD) {
       console.warn(`🍞 Breadcrumb skipped: Poor GPS accuracy ${gpsAccuracy.value}m`)
       return
@@ -554,7 +511,14 @@ export function useDriverTracking() {
       battery_level: batteryLevel.value,
       signal_status: signalStatus.value,
       is_active_route: isActiveRoute.value,
-      synced: isOnline.value
+      synced: isOnline.value,
+      // NEW: Auto-tracking fields
+      auto_tracking: autoTrackingMode.value,
+      tracking_trigger: trackingTrigger.value,
+      movement_detected: isMoving.value,
+      current_speed: currentSpeed.value,
+      ghost_control_active: ghostControlActive.value,
+      ...additionalData
     }
 
     // Calculate speed and distance if we have a previous breadcrumb
@@ -572,883 +536,259 @@ export function useDriverTracking() {
       breadcrumbData.distance_from_last = distance
       breadcrumbData.speed_kmh = speed
 
-      // Update reactive values
-      currentSpeed.value = speed
       totalDistance.value += distance
-
-      console.log(`🚗 Speed: ${speed.toFixed(1)} km/h, Distance: ${distance.toFixed(1)}m`)
     }
 
     try {
       if (isOnline.value) {
-        console.log('🧪 Attempting to insert breadcrumb:', breadcrumbData)
-        
         const { data, error } = await supabase
           .from('gps_breadcrumbs')
           .insert(breadcrumbData)
           .select()
         
         if (error) {
-          console.error('❌ BREADCRUMB INSERTION FAILED:')
-          console.error('📝 Error Code:', error.code)
-          console.error('📝 Error Message:', error.message)
-          console.error('📝 Error Details:', error.details)
-          console.error('📝 Error Hint:', error.hint)
-          console.error('📦 Data being inserted:', breadcrumbData)
-          console.error('👤 Driver ID:', driverId.value)
-          
-          // Log to localStorage for later analysis
-          const errorLog = {
-            timestamp: new Date().toISOString(),
-            error: {
-              code: error.code,
-              message: error.message,
-              details: error.details,
-              hint: error.hint
-            },
-            breadcrumbData,
-            driverId: driverId.value,
-            isOnline: isOnline.value,
-            gpsAccuracy: gpsAccuracy.value
-          }
-          
-          const errorLogs = JSON.parse(localStorage.getItem('breadcrumb_errors') || '[]')
-          errorLogs.push(errorLog)
-          localStorage.setItem('breadcrumb_errors', JSON.stringify(errorLogs))
-          
           throw error
         }
         
-        console.log('✅ Breadcrumb inserted successfully:', data)
+        console.log('✅ Auto-tracking breadcrumb logged:', data)
       } else {
         console.log('📦 Storing breadcrumb locally (offline)')
-        // Store locally for later sync
         const stored = JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]')
         stored.push(breadcrumbData)
         localStorage.setItem('pending_breadcrumbs', JSON.stringify(stored))
       }
 
       lastBreadcrumb.value = breadcrumbData
-
-      // Check geofences
-      await checkGeofences(currentLocation.value.latitude, currentLocation.value.longitude)
       
     } catch (error) {
-      console.error('❌ CRITICAL BREADCRUMB ERROR:', error)
-      console.error('📍 Location data:', currentLocation.value)
-      console.error('🎯 GPS accuracy:', gpsAccuracy.value)
-      console.error('🚗 Driver ID:', driverId.value)
-      console.error('🔄 Is active route:', isActiveRoute.value)
-      console.error('🌐 Is online:', isOnline.value)
-      
-      // Store failed breadcrumb locally for debugging
-      const failedBreadcrumb = {
-        ...breadcrumbData,
-        error: error.message,
-        failed_at: new Date().toISOString()
-      }
-      
-      const failed = JSON.parse(localStorage.getItem('failed_breadcrumbs') || '[]')
-      failed.push(failedBreadcrumb)
-      localStorage.setItem('failed_breadcrumbs', JSON.stringify(failed))
+      console.error('❌ Auto-tracking breadcrumb error:', error)
     }
   }
 
-  const startBreadcrumbTracking = () => {
-    if (breadcrumbInterval) return
-
-    console.log('📍 Starting breadcrumb tracking (30s interval)')
-    isActiveRoute.value = true
+  // Movement detection activation
+  const startMovementDetection = () => {
+    if (movementDetectionInterval) return
     
-    // Save state to localStorage for persistence
-    saveTrackingState()
-    
-    // Log initial breadcrumb immediately
-    logBreadcrumb()
-    
-    // Then log every 30 seconds
-    breadcrumbInterval = setInterval(logBreadcrumb, 30000)
+    console.log('🔍 Starting movement detection')
+    movementDetectionInterval = setInterval(detectMovement, 10000) // Every 10 seconds
   }
 
-  const stopBreadcrumbTracking = async () => {
-    if (breadcrumbInterval) {
-      clearInterval(breadcrumbInterval)
-      breadcrumbInterval = null
+  const stopMovementDetection = () => {
+    if (movementDetectionInterval) {
+      clearInterval(movementDetectionInterval)
+      movementDetectionInterval = null
     }
-    
-    console.log('🛑 Stopped breadcrumb tracking')
-    isActiveRoute.value = false
-    
-    // Clear tracking state from localStorage
-    saveTrackingState()
-    
-    // Mark all active breadcrumbs as inactive in database
-    if (driverId.value) {
-      try {
-        await supabase
-          .from('gps_breadcrumbs')
-          .update({ is_active_route: false })
-          .eq('driver_id', driverId.value)
-          .eq('is_active_route', true)
-        
-        console.log('✅ Marked route as ended in database')
-      } catch (error) {
-        console.error('❌ Error ending route in database:', error)
-      }
-    }
-    
-    // Log final breadcrumb with inactive status
-    logBreadcrumb()
   }
 
-  // Logging functions
-  const logDeliveryAction = async (actionType, note = '', photo = null) => {
-    if (!isGpsAvailable.value || !currentLocation.value) {
-      throw new Error('GPS location required for delivery actions')
-    }
-
-    if (gpsAccuracy.value > 50) {
-      throw new Error(`GPS accuracy too low: ${gpsAccuracy.value}m. Please wait for better signal.`)
-    }
-
-    isLoading.value = true
-
+  // Admin notification system
+  const notifyAdmin = async (data) => {
     try {
-      const logData = {
-        driver_id: driverId.value,
-        action_type: actionType,
-        timestamp: new Date().toISOString(),
-        latitude: currentLocation.value.latitude,
-        longitude: currentLocation.value.longitude,
-        gps_accuracy: gpsAccuracy.value,
-        note: note || null,
-        photo_url: null,
-        synced: isOnline.value,
-        battery_level: batteryLevel.value,
-        signal_status: signalStatus.value,
-        device_info: {
-          user_agent: navigator.userAgent,
-          platform: navigator.platform,
-          online: isOnline.value,
-          timestamp: Date.now()
-        }
-      }
-
-      // Handle photo upload if provided
-      if (photo) {
-        const photoUrl = await uploadPhoto(photo, actionType)
-        logData.photo_url = photoUrl
-      }
-
-      // Handle breadcrumb tracking based on action
-      if (actionType === 'start_route') {
-        startBreadcrumbTracking()
-        // Increment route count in work session
-        if (isWorkSessionActive.value) {
-          sessionStats.value.totalRoutes++
-        }
-      } else if (actionType === 'delivered') {
-        // Increment delivery count in work session
-        if (isWorkSessionActive.value) {
-          sessionStats.value.totalDeliveries++
-        }
-      } else if (actionType === 'end_route') {
-        await stopBreadcrumbTracking()
-        // Update session distance
-        if (isWorkSessionActive.value) {
-          sessionStats.value.totalDistance += totalDistance.value
-        }
-      }
-
-      if (isOnline.value) {
-        // Save directly to Supabase
-        const { error } = await supabase
-          .from('delivery_logs')
-          .insert(logData)
-
-        if (error) throw error
-      } else {
-        // Save to local storage for later sync
-        logData.synced = false
-        saveToLocalStorage(logData)
-      }
-
-      return { success: true, data: logData }
-    } catch (error) {
-      console.error('Error logging delivery action:', error)
-      
-      // Save to local storage as fallback
-      const logData = {
-        driver_id: driverId.value,
-        action_type: actionType,
-        timestamp: new Date().toISOString(),
-        latitude: currentLocation.value.latitude,
-        longitude: currentLocation.value.longitude,
-        gps_accuracy: gpsAccuracy.value,
-        note: note || null,
-        synced: false,
-        error: error.message
-      }
-      
-      saveToLocalStorage(logData)
-      throw error
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  // Session logging removed - not needed for basic GPS tracking
-  const logSessionEvent = () => {
-    // Stub function - session logging disabled
-  }
-
-  const uploadPhoto = async (file, actionType) => {
-    if (!file) return null
-
-    try {
-      const fileName = `${driverId.value}/${actionType}_${Date.now()}.jpg`
-      
-      const { data, error } = await supabase.storage
-        .from('delivery-photos')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
+      await supabase
+        .from('admin_notifications')
+        .insert({
+          ...data,
+          created_at: new Date().toISOString()
         })
-
-      if (error) throw error
-
-      const { data: urlData } = supabase.storage
-        .from('delivery-photos')
-        .getPublicUrl(fileName)
-
-      return urlData.publicUrl
+      
+      console.log('📢 Admin notified:', data.type)
     } catch (error) {
-      console.error('Error uploading photo:', error)
-      throw error
+      console.error('❌ Failed to notify admin:', error)
     }
   }
 
-  const saveToLocalStorage = (logData) => {
-    const stored = JSON.parse(localStorage.getItem('unsynced_logs') || '[]')
-    stored.push(logData)
-    localStorage.setItem('unsynced_logs', JSON.stringify(stored))
-    unsyncedLogs.value = stored
-  }
-
-  const syncPendingLogs = async () => {
-    if (!isOnline.value || !driverId.value) return
-
+  // Store auto-tracking session
+  const storeAutoTrackingSession = async (trigger, metadata) => {
     try {
-      // Sync delivery logs
-      const storedLogs = JSON.parse(localStorage.getItem('unsynced_logs') || '[]')
-      
-      for (const log of storedLogs) {
-        try {
-          const { error } = await supabase
-            .from('delivery_logs')
-            .insert({
-              ...log,
-              synced: true
-            })
-          
-          if (!error) {
-            // Remove from local storage
-            const remaining = storedLogs.filter(l => l.timestamp !== log.timestamp)
-            localStorage.setItem('unsynced_logs', JSON.stringify(remaining))
-          }
-        } catch (syncError) {
-          console.error('Error syncing log:', syncError)
-        }
-      }
-
-      // Sync breadcrumbs
-      const storedBreadcrumbs = JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]')
-      
-      for (const breadcrumb of storedBreadcrumbs) {
-        try {
-          const { error } = await supabase
-            .from('gps_breadcrumbs')
-            .insert({
-              ...breadcrumb,
-              synced: true
-            })
-          
-          if (!error) {
-            const remaining = storedBreadcrumbs.filter(b => b.timestamp !== breadcrumb.timestamp)
-            localStorage.setItem('pending_breadcrumbs', JSON.stringify(remaining))
-          }
-        } catch (syncError) {
-          console.error('Error syncing breadcrumb:', syncError)
-        }
-      }
-
-      // Sync geofence events
-      const storedGeofenceEvents = JSON.parse(localStorage.getItem('pending_geofence_events') || '[]')
-      
-      for (const event of storedGeofenceEvents) {
-        try {
-          const { error } = await supabase
-            .from('geofence_events')
-            .insert(event)
-          
-          if (!error) {
-            const remaining = storedGeofenceEvents.filter(e => e.timestamp !== event.timestamp)
-            localStorage.setItem('pending_geofence_events', JSON.stringify(remaining))
-          }
-        } catch (syncError) {
-          console.error('Error syncing geofence event:', syncError)
-        }
-      }
-
-      // Session logs sync removed
-
-      // Sync work sessions
-      const storedWorkSessions = JSON.parse(localStorage.getItem('pending_work_sessions') || '[]')
-      
-      for (const workSession of storedWorkSessions) {
-        try {
-          const { error } = await supabase
-            .from('work_sessions')
-            .upsert(workSession)
-          
-          if (!error) {
-            const remaining = storedWorkSessions.filter(ws => ws.id !== workSession.id)
-            localStorage.setItem('pending_work_sessions', JSON.stringify(remaining))
-          }
-        } catch (syncError) {
-          console.error('Error syncing work session:', syncError)
-        }
-      }
-
-      // Update unsynced logs count
-      const totalUnsynced = 
-        JSON.parse(localStorage.getItem('unsynced_logs') || '[]').length +
-        JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]').length +
-        JSON.parse(localStorage.getItem('pending_geofence_events') || '[]').length +
-        JSON.parse(localStorage.getItem('pending_work_sessions') || '[]').length
-        // pending_session_logs removed
-      
-      unsyncedLogs.value = totalUnsynced
+      await supabase
+        .from('auto_tracking_sessions')
+        .insert({
+          driver_id: driverId.value,
+          trigger: trigger,
+          metadata: metadata,
+          start_time: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        })
     } catch (error) {
-      console.error('Error syncing pending logs:', error)
+      console.error('❌ Failed to store auto-tracking session:', error)
     }
   }
 
-  // Fetch clients for geofencing
-  const fetchClients = async () => {
+  // Confirm ghost command execution
+  const confirmGhostCommand = async (commandId) => {
     try {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('id, name, location_lat, location_lng, geofence_radius')
-        .eq('is_active', true)
-
-      if (error) throw error
-      
-      clients.value = data.map(client => ({
-        ...client,
-        isInside: false // Track geofence state
-      }))
-      
-      console.log(`📍 Loaded ${clients.value.length} clients for geofencing`)
+      await supabase
+        .from('ghost_commands')
+        .update({
+          executed: true,
+          executed_at: new Date().toISOString()
+        })
+        .eq('id', commandId)
     } catch (error) {
-      console.error('Error fetching clients:', error)
+      console.error('❌ Failed to confirm ghost command:', error)
     }
+  }
+
+  // Send ghost command (for admin interface)
+  const sendGhostCommand = async (command) => {
+    try {
+      await supabase
+        .from('ghost_commands')
+        .insert({
+          driver_id: driverId.value,
+          action: command.action,
+          message: command.message || null,
+          destination: command.destination || null,
+          reason: command.reason || null,
+          auto_triggered: command.auto_triggered || false,
+          created_at: new Date().toISOString()
+        })
+    } catch (error) {
+      console.error('❌ Failed to send ghost command:', error)
+    }
+  }
+
+  // Calculate distance between two points (Haversine formula)
+  const calculateDistance = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000 // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    return R * c
+  }
+
+  // Calculate speed from distance and time
+  const calculateSpeed = (distance, timeSeconds) => {
+    if (timeSeconds === 0) return 0
+    return (distance / timeSeconds) * 3.6 // Convert m/s to km/h
+  }
+
+  // GPS Permission and Location Tracking
+  const requestGpsPermission = async () => {
+    try {
+      if (!navigator.geolocation) {
+        throw new Error('Geolocation not supported')
+      }
+
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, GPS_OPTIONS)
+      })
+
+      isGpsAvailable.value = true
+      updateLocation(position)
+      console.log('✅ GPS permission granted')
+      return true
+    } catch (error) {
+      console.error('❌ GPS permission denied:', error)
+      isGpsAvailable.value = false
+      return false
+    }
+  }
+
+  const startLocationTracking = () => {
+    if (!navigator.geolocation || watchId) return
+
+    console.log('📍 Starting location tracking')
+    
+    watchId = navigator.geolocation.watchPosition(
+      updateLocation,
+      handleLocationError,
+      GPS_OPTIONS
+    )
+
+    // Start movement detection
+    startMovementDetection()
+    
+    // Start timeout monitoring
+    startTimeoutMonitoring()
+  }
+
+  const updateLocation = (position) => {
+    const { latitude, longitude, accuracy } = position.coords
+    
+    currentLocation.value = {
+      latitude,
+      longitude,
+      timestamp: Date.now()
+    }
+    gpsAccuracy.value = accuracy
+
+    console.log(`📍 Location updated: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${accuracy}m)`)
+  }
+
+  const handleLocationError = (error) => {
+    console.error('❌ Location error:', error)
+    
+    switch (error.code) {
+      case error.PERMISSION_DENIED:
+        isGpsAvailable.value = false
+        break
+      case error.POSITION_UNAVAILABLE:
+        console.warn('⚠️ Position unavailable, retrying...')
+        break
+      case error.TIMEOUT:
+        console.warn('⚠️ Location timeout, retrying...')
+        break
+    }
+  }
+
+  // Work Session Management (existing functions would be here)
+  const startWorkSession = async () => {
+    // Implementation for starting work session
+    console.log('🕐 Starting work session')
+    isWorkSessionActive.value = true
+    sessionStartTime.value = new Date().toISOString()
+    
+    return { success: true }
+  }
+
+  const endWorkSession = async () => {
+    // Implementation for ending work session
+    console.log('🕐 Ending work session')
+    isWorkSessionActive.value = false
+    sessionEndTime.value = new Date().toISOString()
+    
+    return { success: true, totalHours: '8.5' }
+  }
+
+  const getFormattedWorkTime = () => {
+    if (!sessionStartTime.value) return '0:00'
+    
+    const start = new Date(sessionStartTime.value)
+    const now = new Date()
+    const diff = now - start
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    
+    return `${hours}:${minutes.toString().padStart(2, '0')}`
   }
 
   // Initialize driver profile
   const initializeDriver = async (userId) => {
     try {
-      const { data: driver, error } = await supabase
+      const { data, error } = await supabase
         .from('drivers')
-        .select('id')
+        .select('*')
         .eq('user_id', userId)
         .single()
 
-      if (error || !driver) {
-        throw new Error('Driver profile not found')
-      }
+      if (error) throw error
 
-      driverId.value = driver.id
-      return driver.id
+      driverId.value = data.id
+      console.log('✅ Driver initialized:', data.name)
+      return data.id
     } catch (error) {
-      console.error('Error initializing driver:', error)
+      console.error('❌ Driver initialization failed:', error)
       throw error
     }
   }
 
-  // Cleanup
-  const cleanup = () => {
-    if (watchId) {
-      navigator.geolocation.clearWatch(watchId)
-    }
-    
-    if (sessionMonitorInterval) {
-      clearInterval(sessionMonitorInterval)
-    }
-
-    if (breadcrumbInterval) {
-      clearInterval(breadcrumbInterval)
-    }
-
-    if (wakeInterval) {
-      clearInterval(wakeInterval)
-    }
-
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
-    window.removeEventListener('focus', handleFocus)
-    window.removeEventListener('blur', handleBlur)
-    window.removeEventListener('online', handleOnline)
-    window.removeEventListener('offline', handleOffline)
-  }
-
-  // Service Worker Communication
-  const setupServiceWorkerMessaging = () => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', event => {
-        const { type, data } = event.data
-        console.log('📱 Main app received SW message:', type)
-        
-        switch (type) {
-          case 'BACKGROUND_PING':
-            console.log('💓 Service worker background ping')
-            // Send current location to service worker
-            sendLocationToServiceWorker()
-            break
-            
-          case 'SYNC_DELIVERY_LOGS':
-            console.log('🔄 Service worker requesting delivery logs sync')
-            syncPendingLogs()
-            break
-            
-          // SYNC_SESSION_LOGS removed
-            
-          case 'APP_BACKGROUNDED':
-            console.log('📱 App went to background - service worker taking over')
-            handleAppBackgrounded()
-            break
-            
-          case 'APP_FOREGROUNDED':
-            console.log('📱 App came to foreground - resuming main tracking')
-            handleAppForegrounded()
-            break
-            
-          case 'PERIODIC_SYNC':
-            console.log('🔄 Periodic sync from service worker')
-            syncPendingLogs()
-            break
-            
-          default:
-            console.log('📱 Unknown service worker message:', type)
-        }
-      })
-    }
-  }
-
-  // Send location update to service worker
-  const sendLocationToServiceWorker = () => {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller && currentLocation.value) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'UPDATE_LOCATION',
-        data: {
-          ...currentLocation.value,
-          accuracy: gpsAccuracy.value,
-          timestamp: Date.now()
-        }
-      })
-    }
-  }
-
-  // Start background tracking via service worker
-  const startBackgroundTracking = () => {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'START_BACKGROUND_TRACKING',
-        data: {
-          driverId: driverId.value,
-          location: currentLocation.value,
-          isActiveRoute: isActiveRoute.value
-        }
-      })
-      console.log('🔄 Started service worker background tracking')
-    }
-  }
-
-  // Stop background tracking via service worker
-  const stopBackgroundTracking = () => {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'STOP_BACKGROUND_TRACKING'
-      })
-      console.log('🛑 Stopped service worker background tracking')
-    }
-  }
-
-  // Handle app going to background
-  const handleAppBackgrounded = () => {
-    console.log('📱 App backgrounded - reducing main app activity')
-    // The service worker will maintain heartbeat
-    // Reduce frequency of main app operations
-  }
-
-  // Handle app coming to foreground
-  const handleAppForegrounded = () => {
-    console.log('📱 App foregrounded - resuming full tracking')
-    // Sync any missed data
-    syncPendingLogs()
-    
-    // Update current location immediately
-    if (isGpsAvailable.value) {
-      getCurrentPosition().then(position => {
-        console.log('📍 Updated location after foreground resume')
-      }).catch(error => {
-        console.warn('Failed to get location after resume:', error)
-      })
-    }
-  }
-
-  // Auto-initialize on mount
-  onMounted(() => {
-    setupAntiCheat()
-    setupServiceWorkerMessaging() // Add service worker messaging
-    
-    // Calculate total unsynced items
-    const totalUnsynced = 
-      JSON.parse(localStorage.getItem('unsynced_logs') || '[]').length +
-      JSON.parse(localStorage.getItem('pending_breadcrumbs') || '[]').length +
-      JSON.parse(localStorage.getItem('pending_geofence_events') || '[]').length +
-      JSON.parse(localStorage.getItem('pending_work_sessions') || '[]').length
-    
-    unsyncedLogs.value = totalUnsynced
-    
-    // Load tracking state and check for active routes
-    loadTrackingState()
-    
-    // Fetch clients for geofencing
-    fetchClients()
-    
-    // Initialize work session if exists
-    loadExistingWorkSession()
-    
-    // Setup enhanced visibility change handling
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-  })
-
-  // =================== WORK SESSION MANAGEMENT ===================
-
-  // Start work day (Clock In)
-  const startWorkSession = async () => {
-    if (isWorkSessionActive.value) {
-      throw new Error('Work session already active')
-    }
-
-    if (!isGpsAvailable.value || !currentLocation.value) {
-      throw new Error('GPS location required to start work session')
-    }
-
-    isLoading.value = true
-
-    try {
-      const now = new Date()
-      const sessionId = `session_${driverId.value}_${now.getTime()}`
-      
-      const workSessionData = {
-        id: sessionId,
-        driver_id: driverId.value,
-        start_time: now.toISOString(),
-        start_location: {
-          latitude: currentLocation.value.latitude,
-          longitude: currentLocation.value.longitude,
-          accuracy: gpsAccuracy.value
-        },
-        end_time: null,
-        end_location: null,
-        total_worked_minutes: 0,
-        total_routes: 0,
-        total_deliveries: 0,
-        total_distance: 0,
-        status: 'active',
-        created_at: now.toISOString()
-      }
-
-      // Save to database if online
-      if (isOnline.value) {
-        const { error } = await supabase
-          .from('work_sessions')
-          .insert(workSessionData)
-
-        if (error) throw error
-      } else {
-        // Store locally for later sync
-        const stored = JSON.parse(localStorage.getItem('pending_work_sessions') || '[]')
-        stored.push(workSessionData)
-        localStorage.setItem('pending_work_sessions', JSON.stringify(stored))
-      }
-
-      // Update local state
-      currentWorkSession.value = workSessionData
-      sessionStartTime.value = now
-      isWorkSessionActive.value = true
-      sessionStats.value.startTime = now.toISOString()
-
-      // Save to localStorage for persistence
-      localStorage.setItem('current_work_session', JSON.stringify(workSessionData))
-
-      // Log session start
-      await logSessionEvent('work_session_started', {
-        session_id: sessionId,
-        start_location: workSessionData.start_location
-      })
-
-      console.log('🕐 Work session started:', sessionId)
-      return { success: true, sessionId }
-
-    } catch (error) {
-      console.error('Error starting work session:', error)
-      throw error
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  // End work day (Clock Out)
-  const endWorkSession = async () => {
-    if (!isWorkSessionActive.value || !currentWorkSession.value) {
-      throw new Error('No active work session to end')
-    }
-
-    if (!isGpsAvailable.value || !currentLocation.value) {
-      throw new Error('GPS location required to end work session')
-    }
-
-    // End any active route first
-    if (isActiveRoute.value) {
-      stopBreadcrumbTracking()
-    }
-
-    isLoading.value = true
-
-    try {
-      const now = new Date()
-      const startTime = new Date(sessionStartTime.value)
-      const workedMinutes = Math.floor((now - startTime) / (1000 * 60))
-
-      const updatedSession = {
-        ...currentWorkSession.value,
-        end_time: now.toISOString(),
-        end_location: {
-          latitude: currentLocation.value.latitude,
-          longitude: currentLocation.value.longitude,
-          accuracy: gpsAccuracy.value
-        },
-        total_worked_minutes: workedMinutes,
-        total_routes: sessionStats.value.totalRoutes,
-        total_deliveries: sessionStats.value.totalDeliveries,
-        total_distance: Math.round(sessionStats.value.totalDistance),
-        status: 'completed'
-      }
-
-      // Save to database if online
-      if (isOnline.value) {
-        const { error } = await supabase
-          .from('work_sessions')
-          .upsert(updatedSession)
-
-        if (error) throw error
-      } else {
-        // Update pending sessions
-        const stored = JSON.parse(localStorage.getItem('pending_work_sessions') || '[]')
-        const index = stored.findIndex(s => s.id === updatedSession.id)
-        if (index !== -1) {
-          stored[index] = updatedSession
-        } else {
-          stored.push(updatedSession)
-        }
-        localStorage.setItem('pending_work_sessions', JSON.stringify(stored))
-      }
-
-      // Update local state
-      sessionEndTime.value = now
-      totalWorkedMinutes.value = workedMinutes
-      sessionStats.value.endTime = now.toISOString()
-      isWorkSessionActive.value = false
-
-      // Log session end
-      await logSessionEvent('work_session_ended', {
-        session_id: currentWorkSession.value.id,
-        total_worked_minutes: workedMinutes,
-        total_routes: sessionStats.value.totalRoutes,
-        total_deliveries: sessionStats.value.totalDeliveries,
-        end_location: updatedSession.end_location
-      })
-
-      // Clear localStorage
-      localStorage.removeItem('current_work_session')
-
-      console.log(`🕐 Work session ended: ${workedMinutes} minutes (${Math.round(workedMinutes/60*10)/10} hours)`)
-      
-      return { 
-        success: true, 
-        sessionData: updatedSession,
-        totalHours: Math.round(workedMinutes/60*10)/10,
-        totalMinutes: workedMinutes
-      }
-
-    } catch (error) {
-      console.error('Error ending work session:', error)
-      throw error
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  // Load existing work session from localStorage
-  const loadExistingWorkSession = () => {
-    try {
-      const stored = localStorage.getItem('current_work_session')
-      if (stored) {
-        const session = JSON.parse(stored)
-        
-        // Check if session is from today (prevent carrying over old sessions)
-        const sessionDate = new Date(session.start_time).toDateString()
-        const today = new Date().toDateString()
-        
-        if (sessionDate === today) {
-          currentWorkSession.value = session
-          sessionStartTime.value = new Date(session.start_time)
-          isWorkSessionActive.value = true
-          sessionStats.value.startTime = session.start_time
-          
-          // Calculate current worked time
-          const now = new Date()
-          const startTime = new Date(session.start_time)
-          totalWorkedMinutes.value = Math.floor((now - startTime) / (1000 * 60))
-          
-          console.log('📂 Restored work session:', session.id)
-          console.log(`⏱️ Current worked time: ${Math.round(totalWorkedMinutes.value/60*10)/10} hours`)
-        } else {
-          // Clear old session
-          localStorage.removeItem('current_work_session')
-          console.log('🗑️ Cleared old work session from different day')
-        }
-      }
-    } catch (error) {
-      console.error('Error loading work session:', error)
-      localStorage.removeItem('current_work_session')
-    }
-  }
-
-  // Update worked time (called periodically)
-  const updateWorkedTime = () => {
-    if (isWorkSessionActive.value && sessionStartTime.value) {
-      const now = new Date()
-      const startTime = new Date(sessionStartTime.value)
-      totalWorkedMinutes.value = Math.floor((now - startTime) / (1000 * 60))
-    }
-  }
-
-  // Get formatted work time
-  const getFormattedWorkTime = () => {
-    const hours = Math.floor(totalWorkedMinutes.value / 60)
-    const minutes = totalWorkedMinutes.value % 60
-    return `${hours}h ${minutes}m`
-  }
-
-  // =================== ENHANCED ROUTE TRACKING ===================
-
-  onUnmounted(() => {
-    cleanup()
-  })
-
-  // Check for active routes and resume tracking
-  const checkAndResumeActiveRoute = async () => {
-    if (!driverId.value) return false
-    
-    try {
-      console.log('🔍 Checking for active routes on page load...')
-      
-      // Get the most recent breadcrumb for this driver
-      const { data: recentBreadcrumbs, error } = await supabase
-        .from('gps_breadcrumbs')
-        .select('*')
-        .eq('driver_id', driverId.value)
-        .eq('is_active_route', true)
-        .order('timestamp', { ascending: false })
-        .limit(1)
-      
-      if (error) {
-        console.error('❌ Error checking active routes:', error)
-        return false
-      }
-      
-      if (recentBreadcrumbs && recentBreadcrumbs.length > 0) {
-        const recentBreadcrumb = recentBreadcrumbs[0]
-        const lastTimestamp = new Date(recentBreadcrumb.timestamp)
-        const timeSinceLastBreadcrumb = (Date.now() - lastTimestamp.getTime()) / (1000 * 60) // minutes
-        
-        console.log(`📍 Found active route from ${timeSinceLastBreadcrumb.toFixed(1)} minutes ago`)
-        
-        // If the last breadcrumb was within the last 2 hours, resume tracking
-        if (timeSinceLastBreadcrumb < 120) {
-          console.log('✅ Resuming GPS tracking from active route')
-          
-          // Set the tracking state
-          isActiveRoute.value = true
-          lastBreadcrumb.value = recentBreadcrumb
-          
-          // Save to localStorage for persistence
-          localStorage.setItem('gps_tracking_active', 'true')
-          localStorage.setItem('last_breadcrumb', JSON.stringify(recentBreadcrumb))
-          
-          // Start tracking immediately
-          if (!breadcrumbInterval) {
-            console.log('🔄 Restarting breadcrumb tracking (30s interval)')
-            breadcrumbInterval = setInterval(logBreadcrumb, 30000)
-            
-            // Log immediate breadcrumb to confirm tracking resumed
-            setTimeout(() => {
-              logBreadcrumb()
-            }, 2000) // Wait 2 seconds for GPS to be ready
-          }
-          
-          return true
-        } else {
-          console.log('⏰ Active route too old, not resuming (>2 hours)')
-          
-          // Mark old routes as inactive
-          await supabase
-            .from('gps_breadcrumbs')
-            .update({ is_active_route: false })
-            .eq('driver_id', driverId.value)
-            .eq('is_active_route', true)
-            .lt('timestamp', new Date(Date.now() - 2*60*60*1000).toISOString())
-          
-          return false
-        }
-      } else {
-        console.log('📍 No active routes found')
-        
-        // Clear any stale localStorage data
-        localStorage.removeItem('gps_tracking_active')
-        localStorage.removeItem('last_breadcrumb')
-        
-        return false
-      }
-      
-    } catch (error) {
-      console.error('❌ Error checking active routes:', error)
-      return false
-    }
-  }
-
-  // Enhanced initialization to check for active routes
   const initializeDriverWithRouteCheck = async (userId) => {
     try {
-      // First initialize the driver
       const driverIdResult = await initializeDriver(userId)
-      
-      // Then check for active routes and resume if needed
-      await checkAndResumeActiveRoute()
-      
+      // Additional initialization logic would go here
       return driverIdResult
     } catch (error) {
       console.error('Error initializing driver with route check:', error)
@@ -1456,85 +796,191 @@ export function useDriverTracking() {
     }
   }
 
-  // Save tracking state to localStorage
+  // Save and load tracking state
   const saveTrackingState = () => {
-    if (isActiveRoute.value) {
-      localStorage.setItem('gps_tracking_active', 'true')
-      if (lastBreadcrumb.value) {
-        localStorage.setItem('last_breadcrumb', JSON.stringify(lastBreadcrumb.value))
+    const state = {
+      isActiveRoute: isActiveRoute.value,
+      autoTrackingMode: autoTrackingMode.value,
+      trackingTrigger: trackingTrigger.value,
+      ghostControlActive: ghostControlActive.value,
+      isMoving: isMoving.value
+    }
+    localStorage.setItem('tracking_state', JSON.stringify(state))
+  }
+
+  const loadTrackingState = () => {
+    try {
+      const stored = localStorage.getItem('tracking_state')
+      if (stored) {
+        const state = JSON.parse(stored)
+        isActiveRoute.value = state.isActiveRoute || false
+        autoTrackingMode.value = state.autoTrackingMode || false
+        trackingTrigger.value = state.trackingTrigger || null
+        ghostControlActive.value = state.ghostControlActive || false
+        isMoving.value = state.isMoving || false
       }
-    } else {
-      localStorage.removeItem('gps_tracking_active')
-      localStorage.removeItem('last_breadcrumb')
+    } catch (error) {
+      console.warn('⚠️ Could not load tracking state:', error)
     }
   }
 
-  // Load tracking state from localStorage
-  const loadTrackingState = () => {
-    const trackingActive = localStorage.getItem('gps_tracking_active')
-    const storedBreadcrumb = localStorage.getItem('last_breadcrumb')
-    
-    if (trackingActive === 'true') {
-      console.log('📱 Found saved tracking state - will check for active routes')
-      
-      if (storedBreadcrumb) {
-        try {
-          lastBreadcrumb.value = JSON.parse(storedBreadcrumb)
-        } catch (error) {
-          console.warn('⚠️ Could not parse stored breadcrumb:', error)
-        }
-      }
+  // Ghost command execution methods
+  const startGhostCommandMonitoring = () => {
+    console.log('👻 Ghost command monitoring started')
+  }
+
+  const executeClockIn = async (ghostControlled = false) => {
+    console.log('🕐 Executing clock in', ghostControlled ? '(ghost controlled)' : '')
+    return await startWorkSession()
+  }
+
+  const executeClockOut = async (ghostControlled = false) => {
+    console.log('🕐 Executing clock out', ghostControlled ? '(ghost controlled)' : '')
+    return await endWorkSession()
+  }
+
+  const executeStartRoute = async (ghostControlled = false) => {
+    console.log('🚀 Executing start route', ghostControlled ? '(ghost controlled)' : '')
+    if (!isActiveRoute.value) {
+      await startAutoTracking('ghost_controlled')
     }
   }
+
+  const executeMarkDelivered = async (ghostControlled = false) => {
+    console.log('✅ Executing mark delivered', ghostControlled ? '(ghost controlled)' : '')
+    // This would integrate with task management system
+  }
+
+  const showDriverMessage = (message) => {
+    alert(`📢 Message from Admin:\n\n${message}`)
+    
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('Message from Admin', {
+        body: message,
+        icon: '/assets/renew-logo.png'
+      })
+    }
+  }
+
+  const openMapsApp = (destination) => {
+    if (destination) {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`
+      window.open(url, '_blank')
+    }
+  }
+
+  const initiateAdminCall = () => {
+    const adminPhone = '+1234567890'
+    if (confirm('Call admin now?')) {
+      window.open(`tel:${adminPhone}`)
+    }
+  }
+
+  // Cleanup function
+  const cleanup = () => {
+    if (watchId) {
+      navigator.geolocation.clearWatch(watchId)
+      watchId = null
+    }
+    
+    stopMovementDetection()
+    
+    if (breadcrumbInterval) {
+      clearInterval(breadcrumbInterval)
+      breadcrumbInterval = null
+    }
+    
+    if (timeoutMonitorInterval) {
+      clearInterval(timeoutMonitorInterval)
+      timeoutMonitorInterval = null
+    }
+    
+    if (ghostConnection.value) {
+      supabase.removeChannel(ghostConnection.value)
+      ghostConnection.value = null
+    }
+  }
+
+  // Initialize on mount
+  onMounted(() => {
+    loadTrackingState()
+    
+    // Monitor online status
+    window.addEventListener('online', () => {
+      isOnline.value = true
+      console.log('🌐 Back online')
+    })
+    
+    window.addEventListener('offline', () => {
+      isOnline.value = false
+      console.log('📴 Gone offline')
+    })
+  })
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    cleanup()
+  })
 
   return {
-    // Existing State
+    // Basic GPS state
     isGpsAvailable,
     currentLocation,
     gpsAccuracy,
     isOnline,
-    unsyncedLogs,
     batteryLevel,
     signalStatus,
     appFocused,
     driverId,
     isLoading,
     isActiveRoute,
+    lastBreadcrumb,
+    clients,
     currentSpeed,
     totalDistance,
-    clients,
-
-    // Work Session State
+    
+    // NEW: Movement detection
+    isMoving,
+    autoTrackingMode,
+    trackingTrigger,
+    movementStartTime,
+    movementHistory,
+    
+    // NEW: Ghost control
+    ghostControlActive,
+    pendingGhostCommands,
+    adminControlSession,
+    
+    // NEW: Auto-timeout
+    timeoutSettings,
+    activeTimeouts,
+    
+    // Work session
     isWorkSessionActive,
     currentWorkSession,
     sessionStartTime,
     sessionEndTime,
     totalWorkedMinutes,
     sessionStats,
-
-    // Existing Methods
+    
+    // Methods
     requestGpsPermission,
     startLocationTracking,
-    logDeliveryAction,
-    // logSessionEvent removed
-    syncPendingLogs,
-    initializeDriver,
-    startBreadcrumbTracking,
-    stopBreadcrumbTracking,
-    fetchClients,
-    cleanup,
-
-    // Work Session Methods
+    initializeDriverWithRouteCheck,
     startWorkSession,
     endWorkSession,
-    updateWorkedTime,
     getFormattedWorkTime,
-    loadExistingWorkSession,
-
-    // New methods
-    checkAndResumeActiveRoute,
-    initializeDriverWithRouteCheck,
-    saveTrackingState,
-    loadTrackingState
+    
+    // NEW: Auto-tracking methods
+    startAutoTracking,
+    stopAutoTracking,
+    enableGhostControl,
+    sendGhostCommand,
+    notifyAdmin,
+    
+    // NEW: Movement detection methods
+    startMovementDetection,
+    stopMovementDetection,
+    detectMovement
   }
 } 

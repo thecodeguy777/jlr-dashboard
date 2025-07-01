@@ -16,8 +16,11 @@
     "geolocation",
     "background-sync",
     "periodic-background-sync",
-    "storage"
+    "storage",
+    "notifications",
+    "push"
   ],
+  "gcm_sender_id": "103953800507",
   "icons": [
     {
       "src": "/assets/renew-logo.png",

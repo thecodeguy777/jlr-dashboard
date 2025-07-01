@@ -45,6 +45,7 @@
 import { Dialog, DialogOverlay } from '@headlessui/vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/useUserStore'
+import { supabase } from '@/lib/supabase'
 import { ref } from 'vue'
 
 const userStore = useUserStore()
@@ -58,7 +59,58 @@ function goTo(action) {
     userStore.closeAccountModal()
 }
 
-function logout() {
+async function logout() {
+    console.log('🔄 AccountModal logout triggered')
+    
+    // Check if this is a driver and handle presence cleanup
+    if (userStore.role === 'driver') {
+        console.log('👤 Driver logout detected - performing presence cleanup')
+        
+        try {
+            // Get driver ID from user
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                const { data: driver } = await supabase
+                    .from('drivers')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .single()
+                
+                if (driver) {
+                    console.log('👋 Marking driver offline before logout:', driver.id)
+                    
+                    // Mark driver as offline
+                    const { error: presenceError } = await supabase
+                        .from('driver_presence')
+                        .update({
+                            is_online: false,
+                            last_seen: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('driver_id', driver.id)
+                    
+                    if (presenceError) {
+                        console.warn('⚠️ Failed to update presence, using fallback:', presenceError)
+                        
+                        // Fallback: Log logout activity
+                        await supabase
+                            .from('delivery_logs')
+                            .insert({
+                                driver_id: driver.id,
+                                action_type: 'logout_account_modal',
+                                timestamp: new Date().toISOString(),
+                                note: 'Driver logged out via account modal'
+                            })
+                    } else {
+                        console.log('✅ Driver marked as offline successfully')
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Error during driver logout cleanup:', error)
+        }
+    }
+    
     userStore.logout()
     router.push('/login')
     userStore.closeAccountModal()

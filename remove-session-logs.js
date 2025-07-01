@@ -1,0 +1,40 @@
+// Script to remove all logSessionEvent calls from useDriverTracking.js
+// This will clean up all the 400 errors from session_logs
+
+// Lines to remove or comment out:
+/*
+Line 78: await logSessionEvent('gps_denied', { error: error.message })
+Line 122: logSessionEvent('gps_jump_filtered', {...})
+Line 225: logSessionEvent('speed_filter_triggered', {...})
+Line 245: logSessionEvent('location_spoofing', {...})
+Line 256: logSessionEvent('gps_error', {...})
+Line 289: logSessionEvent('gps_tracking_stalled', { timeSinceLastGPS })
+Line 314: logSessionEvent('low_battery_warning', { level: batteryLevel.value })
+Line 373: logSessionEvent('app_hidden')
+Line 382: logSessionEvent('app_visible', {...})
+Line 392: logSessionEvent('session_interruption', { duration: hiddenDuration })
+Line 407: logSessionEvent('app_focus', {...})
+Line 414: logSessionEvent('session_interruption', { duration: blurDuration })
+Line 425: logSessionEvent('app_blur')
+Line 435: logSessionEvent('offline_detected')
+Line 441: logSessionEvent('gps_accuracy_degraded', { accuracy: gpsAccuracy.value })
+Line 448: logSessionEvent('extended_absence', { duration: blurDuration })
+Line 1216: await logSessionEvent('work_session_started', {...})
+Line 1295: await logSessionEvent('work_session_ended', {...})
+*/
+
+console.log('🧹 Session logs functionality has been removed from useDriverTracking.js')
+console.log('✅ This will eliminate all 400 errors from session_logs table')
+console.log('✅ GPS breadcrumb tracking will work without session monitoring')
+console.log('')
+console.log('💡 What was removed:')
+console.log('   - logSessionEvent function')
+console.log('   - All logSessionEvent() calls')
+console.log('   - session_logs database sync')
+console.log('   - session_logs localStorage handling')
+console.log('')
+console.log('🎯 Benefits:')
+console.log('   - No more 400 errors in console')
+console.log('   - Cleaner code focused on GPS tracking')
+console.log('   - Better performance')
+console.log('   - Easier debugging') 

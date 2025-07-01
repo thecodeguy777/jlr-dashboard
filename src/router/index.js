@@ -210,6 +210,13 @@ const routes = [
     path: '/task-management',
     component: () => import('@/views/TaskManagement.vue'),
     meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
+  
+  // 👻 Ghost Control Dashboard
+  {
+    path: '/ghost-control',
+    component: () => import('@/views/GhostControlDashboard.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'owner'] }
   }
 ]
 
