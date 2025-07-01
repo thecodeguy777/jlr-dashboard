@@ -538,37 +538,18 @@ export function useDriverTracking() {
     }
 
     const now = new Date()
-    // ROBUST breadcrumb data - log everything we have
+    // SAFE breadcrumb data - ONLY essential fields that definitely exist
     const breadcrumbData = {
       driver_id: driverId.value,
       timestamp: now.toISOString(),
       latitude: currentLocation.value.latitude,
       longitude: currentLocation.value.longitude,
-      gps_accuracy: gpsAccuracy.value || 999, // Mark unknown accuracy as 999
-      battery_level: batteryLevel.value || null,
-      signal_status: signalStatus.value || 'unknown',
-      is_active_route: isActiveRoute.value || false, // Force to boolean
-      synced: isOnline.value,
-      // Advanced tracking fields
-      auto_tracking: autoTrackingMode.value || false,
-      tracking_trigger: trackingTrigger.value || 'manual',
-      movement_detected: isMoving.value || false,
-      ghost_control_active: ghostControlActive.value || false,
-      // Mark if this is low accuracy
-      low_accuracy_warning: isLowAccuracy,
-      // Merge any additional data
-      ...additionalData
+      gps_accuracy: gpsAccuracy.value || null,
+      is_active_route: isActiveRoute.value || false,
+      synced: isOnline.value
     }
 
-    console.log('🍞 BREADCRUMB DATA prepared:', {
-      lat: breadcrumbData.latitude?.toFixed(6),
-      lng: breadcrumbData.longitude?.toFixed(6),
-      accuracy: breadcrumbData.gps_accuracy,
-      trigger: breadcrumbData.tracking_trigger,
-      route_active: breadcrumbData.is_active_route
-    })
-
-    // Calculate speed and distance if we have a previous breadcrumb
+    // Add speed/distance if we have previous breadcrumb (these fields should exist)
     if (lastBreadcrumb.value) {
       const distance = calculateDistance(
         lastBreadcrumb.value.latitude,
@@ -580,12 +561,35 @@ export function useDriverTracking() {
       const timeSeconds = (now - new Date(lastBreadcrumb.value.timestamp)) / 1000
       const speed = calculateSpeed(distance, timeSeconds)
 
-      breadcrumbData.distance_from_last = Math.round(distance * 100) / 100 // Round to 2 decimals
-      breadcrumbData.speed_kmh = Math.round(speed * 100) / 100 // Round to 2 decimals
+      breadcrumbData.distance_from_last = Math.round(distance * 100) / 100
+      breadcrumbData.speed_kmh = Math.round(speed * 100) / 100
 
       totalDistance.value += distance
       currentSpeed.value = speed
     }
+
+    // Add optional fields that user confirmed exist in your database schema
+    if (additionalData.trigger) breadcrumbData.tracking_trigger = additionalData.trigger
+    if (additionalData.note) breadcrumbData.note = additionalData.note
+    if (batteryLevel.value) breadcrumbData.battery_level = batteryLevel.value
+    if (signalStatus.value) breadcrumbData.signal_status = signalStatus.value
+    
+    // Mark low accuracy in note if needed
+    if (isLowAccuracy && additionalData.note) {
+      breadcrumbData.note = `Low accuracy: ${gpsAccuracy.value}m. ${additionalData.note}`
+    } else if (isLowAccuracy) {
+      breadcrumbData.note = `Low accuracy: ${gpsAccuracy.value}m`
+    }
+
+    console.log('🍞 BREADCRUMB DATA prepared:', {
+      lat: breadcrumbData.latitude?.toFixed(6),
+      lng: breadcrumbData.longitude?.toFixed(6),
+      accuracy: breadcrumbData.gps_accuracy,
+      trigger: breadcrumbData.tracking_trigger,
+      route_active: breadcrumbData.is_active_route,
+      speed: breadcrumbData.speed_kmh,
+      distance: breadcrumbData.distance_from_last
+    })
 
     try {
       if (isOnline.value) {
