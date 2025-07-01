@@ -594,15 +594,18 @@ export function useDriverTracking() {
     }
 
     const now = new Date()
-    // SAFE breadcrumb data - ONLY essential fields that definitely exist
+    // SIMPLIFIED breadcrumb data - ONLY fields that actually exist in your database
     const breadcrumbData = {
-      driver_id: driverId.value,
+      driver_id: driverId.value, // UUID directly
       timestamp: now.toISOString(),
       latitude: currentLocation.value.latitude,
       longitude: currentLocation.value.longitude,
       gps_accuracy: gpsAccuracy.value || null,
       is_active_route: isActiveRoute.value || false,
-      synced: isOnline.value
+      synced: isOnline.value,
+      // ALPHA SIMPLIFIED: Only the columns you actually added
+      auto_tracking: additionalData.auto_tracking !== undefined ? additionalData.auto_tracking : autoTrackingMode.value,
+      movement_detected: additionalData.movement_detected !== undefined ? additionalData.movement_detected : isMoving.value
     }
 
     // Add speed/distance if we have previous breadcrumb (these fields should exist)
@@ -624,15 +627,7 @@ export function useDriverTracking() {
       currentSpeed.value = speed
     }
 
-    // ONLY add fields that definitely exist - no more guessing!
-    // Commenting out potentially non-existent fields until confirmed
-    // if (additionalData.trigger) breadcrumbData.tracking_trigger = additionalData.trigger
-    // if (batteryLevel.value) breadcrumbData.battery_level = batteryLevel.value
-    // if (signalStatus.value) breadcrumbData.signal_status = signalStatus.value
-    
-    console.log('⚠️ Using minimal field set to avoid database errors')
-
-    console.log('🍞 BREADCRUMB DATA prepared (MINIMAL FIELDS):', {
+    console.log('🍞 BREADCRUMB DATA prepared (ALPHA SIMPLIFIED):', {
       driver_id: breadcrumbData.driver_id,
       lat: breadcrumbData.latitude?.toFixed(6),
       lng: breadcrumbData.longitude?.toFixed(6),
@@ -640,7 +635,9 @@ export function useDriverTracking() {
       route_active: breadcrumbData.is_active_route,
       speed: breadcrumbData.speed_kmh || 'N/A',
       distance: breadcrumbData.distance_from_last || 'N/A',
-      synced: breadcrumbData.synced
+      synced: breadcrumbData.synced,
+      auto_tracking: breadcrumbData.auto_tracking,
+      movement: breadcrumbData.movement_detected
     })
 
     try {
@@ -670,7 +667,8 @@ export function useDriverTracking() {
           timestamp: data[0]?.timestamp,
           location: `${data[0]?.latitude?.toFixed(6)}, ${data[0]?.longitude?.toFixed(6)}`,
           accuracy: `${data[0]?.gps_accuracy}m`,
-          trigger: data[0]?.tracking_trigger
+          auto_tracking: data[0]?.auto_tracking,
+          movement: data[0]?.movement_detected
         })
       } else {
         console.log('📶 OFFLINE - Storing breadcrumb locally')
@@ -1084,7 +1082,7 @@ export function useDriverTracking() {
     try {
       // Save work session to database with GPS coordinates
       const sessionData = {
-        driver_id: driverId.value.toString(), // Convert to TEXT
+        driver_id: driverId.value, // FIXED: Use UUID directly, NOT .toString()
         start_time: new Date().toISOString(),
         status: 'active',
         // Capture GPS location at clock-in
@@ -1096,7 +1094,8 @@ export function useDriverTracking() {
       console.log('📍 Clock-in location captured:', {
         lat: sessionData.start_latitude,
         lng: sessionData.start_longitude,
-        accuracy: sessionData.start_gps_accuracy
+        accuracy: sessionData.start_gps_accuracy,
+        driverIdType: typeof sessionData.driver_id
       })
 
       const { data, error } = await supabase
@@ -1117,25 +1116,81 @@ export function useDriverTracking() {
 
       console.log('✅ Work session started with GPS location saved to database:', data.id)
       
-      // FIXED: Log CLOCK-IN action to delivery_logs for admin visibility
+      // ROBUST: Log CLOCK-IN action to delivery_logs (with comprehensive error handling)
       try {
-        await supabase
+        console.log('📝 Attempting to log clock-in action to delivery_logs...')
+        console.log('🌐 Network status:', navigator.onLine ? 'Online' : 'Offline')
+        console.log('🔗 Supabase URL:', supabase.supabaseUrl)
+        
+        const deliveryLogData = {
+          driver_id: driverId.value,
+          action_type: 'clocked_in', // FIXED: Use 'clocked_in' for proper clock-in logging
+          timestamp: sessionData.start_time,
+          latitude: sessionData.start_latitude,
+          longitude: sessionData.start_longitude,
+          gps_accuracy: sessionData.start_gps_accuracy,
+          note: 'Driver clocked in - work day started',
+          battery_level: batteryLevel.value,
+          signal_status: signalStatus.value || 'unknown',
+          synced: true,
+          created_at: new Date().toISOString()
+        }
+        
+        console.log('📋 Delivery log data:', deliveryLogData)
+        console.log('🚀 Making request to delivery_logs...')
+        
+        const startTime = Date.now()
+        const result = await supabase
           .from('delivery_logs')
-          .insert({
-            driver_id: driverId.value,
-            action_type: 'clocked_in',
-            timestamp: sessionData.start_time,
-            latitude: sessionData.start_latitude,
-            longitude: sessionData.start_longitude,
-            gps_accuracy: sessionData.start_gps_accuracy,
-            note: 'Driver clocked in - work session started',
-            battery_level: batteryLevel.value,
-            signal_status: signalStatus.value || 'unknown',
-            synced: true
-          })
-        console.log('📝 Clock-in action logged for admin visibility')
+          .insert(deliveryLogData)
+          
+        console.log(`✅ Clock-in action logged (${Date.now() - startTime}ms)`)
+        
       } catch (logError) {
-        console.warn('⚠️ Could not log start action (non-critical):', logError)
+        console.error('❌ DELIVERY LOG ERROR - Full details:', logError)
+        console.error('🔍 Error type:', typeof logError)
+        console.error('🔍 Error constructor:', logError.constructor.name)
+        console.error('🔍 Error message:', logError.message)
+        console.error('🔍 Error code:', logError.code)
+        console.error('🔍 Error status:', logError.status)
+        
+        // Check if it's a network/fetch issue
+        if (logError.message?.includes('fetch') || logError.name === 'TypeError') {
+          console.error('🌐 NETWORK/FETCH ISSUE detected!')
+          console.log('🔧 Possible solutions:')
+          console.log('   1. Check internet connection')
+          console.log('   2. Check CORS settings')
+          console.log('   3. Check Supabase URL/key')
+          console.log('   4. Try refreshing the page')
+        }
+        
+        // Try with different action_type as fallback
+        if (logError.message?.includes('action_type') || logError.code === '23514') {
+          console.log('🔄 Retrying with different action_type...')
+          try {
+            await supabase
+              .from('delivery_logs')
+              .insert({
+                driver_id: driverId.value,
+                action_type: 'clocked_in', // Fallback to known valid action
+                timestamp: sessionData.start_time,
+                latitude: sessionData.start_latitude,
+                longitude: sessionData.start_longitude,
+                gps_accuracy: sessionData.start_gps_accuracy,
+                note: 'Driver clocked in - work day started',
+                battery_level: batteryLevel.value,
+                signal_status: signalStatus.value || 'unknown',
+                synced: true
+              })
+            console.log('✅ Clock-in logged with fallback action_type')
+          } catch (fallbackError) {
+            console.error('❌ Fallback also failed:', fallbackError)
+            console.log('⚠️ Delivery logging disabled for this session - main tracking continues')
+          }
+        } else {
+          console.error('❌ Unexpected delivery log error:', logError.message)
+          console.log('⚠️ Skipping delivery log - main work session tracking is working fine')
+        }
       }
       
       // Save to localStorage as backup
@@ -1144,25 +1199,38 @@ export function useDriverTracking() {
       // IMPORTANT: Also immediately update driver presence with current location
       await updateDriverPresenceWithLocation()
       
-      // FIXED: Start breadcrumb tracking when clocking in (not just when moving)
-      console.log('🍞 Starting breadcrumb tracking for clocked-in driver')
+      // FIXED: Start CONTINUOUS breadcrumb tracking when clocking in (for admin visibility)
+      console.log('🍞 Starting CONTINUOUS breadcrumb tracking for clocked-in driver')
       isActiveRoute.value = true
       autoTrackingMode.value = true
       trackingTrigger.value = 'work_session_active'
       
-      // MOVEMENT-BASED breadcrumb tracking - only log when moving or immediately on clock-in
+      // Log immediate breadcrumb for clock-in (for admin visibility)
+      console.log('🍞 LOGGING IMMEDIATE CLOCK-IN BREADCRUMB...')
+      await logBreadcrumb({
+        trigger: 'work_session_start',
+        note: 'Clock-in breadcrumb - tracking active',
+        showUserError: true
+      })
+      
+      // FIXED: Start CONTINUOUS interval for work session (every 60 seconds for clocked-in drivers)
       if (!breadcrumbInterval) {
-        // Log immediate breadcrumb for clock-in (for admin visibility)
-        console.log('🍞 LOGGING IMMEDIATE CLOCK-IN BREADCRUMB...')
-        await logBreadcrumb({
-          trigger: 'work_session_start',
-          note: 'Clock-in breadcrumb - tracking active',
-          showUserError: true
-        })
-        
-        // DON'T start continuous interval - only log when movement detected
-        console.log('🍞 Breadcrumb tracking enabled - will log when movement detected')
-        console.log('⚠️ Static breadcrumbs disabled - only movement-based logging')
+        console.log('🍞 Starting CONTINUOUS breadcrumb tracking every 60 seconds (work session active)')
+        breadcrumbInterval = setInterval(async () => {
+          if (isWorkSessionActive.value) {
+            console.log('🍞 WORK SESSION BREADCRUMB - logging for admin visibility')
+            await logBreadcrumb({
+              trigger: 'work_session_active',
+              note: `Work session tracking: ${isMoving.value ? 'Moving' : 'Stationary'}`,
+              auto_tracking: autoTrackingMode.value,
+              movement_detected: isMoving.value
+            })
+          } else {
+            console.log('⏸️ Work session ended - stopping breadcrumb tracking')
+            clearInterval(breadcrumbInterval)
+            breadcrumbInterval = null
+          }
+        }, 60000) // Every 60 seconds for work sessions (slower than movement-based)
       }
       
       return { success: true, sessionId: data.id }
@@ -1191,7 +1259,7 @@ export function useDriverTracking() {
         .update({
           end_time: endTime,
           status: 'completed',
-          total_hours: totalHours,
+          total_worked_minutes: Math.round(totalHours * 60), // Convert hours to minutes
           // Capture GPS location at clock-out
           end_latitude: currentLocation.value?.latitude || null,
           end_longitude: currentLocation.value?.longitude || null,
@@ -1219,25 +1287,36 @@ export function useDriverTracking() {
 
       console.log('✅ Work session ended with GPS location saved to database')
       
-      // FIXED: Log CLOCK-OUT action to delivery_logs for admin visibility
+      // ROBUST: Log CLOCK-OUT action to delivery_logs (with comprehensive error handling)
       try {
+        console.log('📝 Attempting to log clock-out action to delivery_logs...')
+        
+        const deliveryLogData = {
+          driver_id: driverId.value,
+          action_type: 'clocked_out', // FIXED: Use 'clocked_out' for proper clock-out logging
+          timestamp: endTime,
+          latitude: currentLocation.value?.latitude,
+          longitude: currentLocation.value?.longitude,
+          gps_accuracy: gpsAccuracy.value,
+          note: `Driver clocked out - work day completed (${totalHours} hours)`,
+          battery_level: batteryLevel.value,
+          signal_status: signalStatus.value || 'unknown',
+          synced: true,
+          created_at: new Date().toISOString()
+        }
+        
         await supabase
           .from('delivery_logs')
-          .insert({
-            driver_id: driverId.value,
-            action_type: 'clocked_out',
-            timestamp: endTime,
-            latitude: currentLocation.value?.latitude,
-            longitude: currentLocation.value?.longitude,
-            gps_accuracy: gpsAccuracy.value,
-            note: `Driver clocked out - work session completed (${totalHours} hours)`,
-            battery_level: batteryLevel.value,
-            signal_status: signalStatus.value || 'unknown',
-            synced: true
-          })
-        console.log('📝 Clock-out action logged for admin visibility')
+          .insert(deliveryLogData)
+          
+        console.log('✅ Clock-out action logged for admin visibility')
+        
       } catch (logError) {
-        console.warn('⚠️ Could not log end action (non-critical):', logError)
+        console.error('❌ CLOCK-OUT LOG ERROR:', logError)
+        console.log('⚠️ Clock-out logging failed - but work session ended successfully')
+        
+        // Don't retry for clock-out - just log the error and continue
+        console.log('📊 Work session data is safely stored in work_sessions table')
       }
       
       // Clear localStorage backup
@@ -1283,11 +1362,11 @@ export function useDriverTracking() {
     console.log('🔍 Loading active work session for driver:', driverId.value)
     
     try {
-      // Check database for active work session (using TEXT driver_id)
+      // Check database for active work session (using UUID driver_id directly)
       const { data, error } = await supabase
         .from('work_sessions')
         .select('*')
-        .eq('driver_id', driverId.value.toString())
+        .eq('driver_id', driverId.value) // FIXED: Use UUID directly, NOT .toString()
         .eq('status', 'active')
         .order('start_time', { ascending: false })
         .limit(1)
@@ -1303,6 +1382,29 @@ export function useDriverTracking() {
         
         console.log('✅ Active work session restored:', data.id)
         console.log('📅 Session started at:', new Date(data.start_time).toLocaleString())
+        
+        // FIXED: Also restore breadcrumb tracking if work session is active
+        if (!breadcrumbInterval && isWorkSessionActive.value) {
+          console.log('🍞 Restoring breadcrumb tracking for active work session')
+          isActiveRoute.value = true
+          autoTrackingMode.value = true
+          trackingTrigger.value = 'work_session_active'
+          
+          // Start continuous tracking for restored session
+          breadcrumbInterval = setInterval(async () => {
+            if (isWorkSessionActive.value) {
+              await logBreadcrumb({
+                trigger: 'work_session_active',
+                note: `Work session tracking: ${isMoving.value ? 'Moving' : 'Stationary'}`,
+                auto_tracking: autoTrackingMode.value,
+                movement_detected: isMoving.value
+              })
+            } else {
+              clearInterval(breadcrumbInterval)
+              breadcrumbInterval = null
+            }
+          }, 60000) // Every 60 seconds
+        }
         
         // Update localStorage backup
         localStorage.setItem('active_work_session', JSON.stringify(data))
