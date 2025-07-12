@@ -1230,7 +1230,7 @@ async function fetchReturnsData() {
                                 </div>
                             </div>
 
-                            <!-- Savings Card -->
+                            <!-- Savings Card 
                             <div class="relative bg-gradient-to-br from-purple-500/10 to-purple-600/5 rounded-2xl p-4 border border-purple-500/20 overflow-hidden">
                                 <div class="absolute top-0 right-0 w-20 h-20 bg-purple-500/10 rounded-full -translate-y-10 translate-x-10"></div>
                                 <div class="relative">
@@ -1240,7 +1240,7 @@ async function fetchReturnsData() {
                                     </div>
                                     <p class="text-2xl font-bold text-purple-400">{{ formatCurrency(payrollSummary.savingsToDate) }}</p>
                                 </div>
-                            </div>
+                            </div>-->
 
                             <!-- Loan Card -->
                             <div class="relative bg-gradient-to-br from-yellow-500/10 to-yellow-600/5 rounded-2xl p-4 border border-yellow-500/20 overflow-hidden">

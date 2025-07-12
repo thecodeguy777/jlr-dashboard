@@ -142,7 +142,7 @@ export function useTaskManagement() {
       
       console.log(`📝 Task start ${result.synced ? 'synced' : 'queued'}: ${task.task_title}`)
       
-      // FIXED: Log START DELIVERY action to delivery_logs for admin visibility  
+      // FIXED: Log START TASK action to delivery_logs for admin visibility  
       try {
         // Get current GPS location - will be updated when driver dashboard calls this
         const gpsData = window.currentGpsLocation || null
@@ -156,7 +156,7 @@ export function useTaskManagement() {
             latitude: gpsData?.latitude || null,
             longitude: gpsData?.longitude || null,
             gps_accuracy: gpsData?.accuracy || null,
-            note: `Started delivery route: ${task.task_title}`,
+            note: `Started task: ${task.task_title}`,
             battery_level: gpsData?.battery_level || null,
             signal_status: gpsData?.signal_status || 'unknown',
             synced: true
@@ -220,7 +220,7 @@ export function useTaskManagement() {
             latitude: completionData.completion_location?.lat || null,
             longitude: completionData.completion_location?.lng || null,
             gps_accuracy: completionData.completion_location?.accuracy || null,
-            note: `Completed delivery: ${task.task_title}${completionData.completion_notes ? ` - ${completionData.completion_notes}` : ''}`,
+            note: `Completed task: ${task.task_title}${completionData.completion_notes ? ` - ${completionData.completion_notes}` : ''}`,
             synced: true
           })
         console.log('📝 Task completion action logged for admin visibility')

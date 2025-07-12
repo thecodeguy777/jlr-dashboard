@@ -774,13 +774,7 @@ function hasActiveFilters() {
                       <span class="text-white/70">- {{ productName }} (Gross):</span>
                       <span class="text-blue-300 font-medium">{{ productData.quantity }} pcs</span>
                     </div>
-                    <!-- Net quantity with stock deduction info -->
-                    <div v-if="worker.stockDeductions[productName]" class="flex justify-between text-xs ml-4">
-                      <span class="text-green-200/70">Net (After {{ worker.stockDeductions[productName].previousStock }}
-                        prev stock):</span>
-                      <span class="text-green-300 font-medium">{{ worker.stockDeductions[productName].netQty }}
-                        pcs</span>
-                    </div>
+
                   </div>
                 </div>
               </div>
@@ -797,22 +791,6 @@ function hasActiveFilters() {
                 <div class="flex justify-between items-center text-sm mt-1">
                   <span class="text-white/60">Gross Quantity:</span>
                   <span class="text-white/80">{{ worker.totalQuantity }} pcs</span>
-                </div>
-              </div>
-
-              <!-- Net Values (After Stock Deduction) -->
-              <div class="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
-                <div class="flex justify-between items-center">
-                  <span class="text-green-300 font-medium">Net Value (After Stock):</span>
-                  <span class="text-green-400 font-bold text-lg">₱{{ worker.netValue.toLocaleString() }}</span>
-                </div>
-                <div class="flex justify-between items-center text-sm mt-1">
-                  <span class="text-green-200/80">Net Quantity:</span>
-                  <span class="text-green-200">{{ worker.netQuantity }} pcs</span>
-                </div>
-                <div class="flex justify-between items-center text-xs mt-1 text-green-200/60">
-                  <span>Stock Deduction Applied</span>
-                  <span>{{ (worker.totalQuantity - worker.netQuantity) }} pcs deducted</span>
                 </div>
               </div>
             </div>

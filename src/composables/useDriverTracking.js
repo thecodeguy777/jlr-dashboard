@@ -889,7 +889,7 @@ export function useDriverTracking() {
 
     console.log(`📍 Location updated: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${accuracy}m)`)
     
-    // GEOFENCE DETECTION: Check if driver arrived at any task location
+    // GEOFENCE DETECTION: Automatic 'arrived' logging when entering task geofence
     checkTaskGeofences(latitude, longitude)
   }
 
@@ -917,6 +917,9 @@ export function useDriverTracking() {
             const alreadyArrived = await checkIfAlreadyArrived(task.id)
             if (!alreadyArrived) {
               await logArrivalAction(task, lat, lng)
+              
+              // Update arrival status for UI
+              await checkTaskArrivals()
             }
           }
         }
@@ -931,17 +934,46 @@ export function useDriverTracking() {
     try {
       const { data, error } = await supabase
         .from('delivery_logs')
-        .select('id')
+        .select('id, timestamp')
         .eq('driver_id', driverId.value)
         .eq('action_type', 'arrived')
         .like('note', `%task_id:${taskId}%`)
         .limit(1)
       
       if (error) throw error
-      return data && data.length > 0
+      return data && data.length > 0 ? data[0] : null
     } catch (error) {
       console.warn('⚠️ Could not check arrival status:', error)
-      return false
+      return null
+    }
+  }
+
+  // NEW: Check arrival status for all current tasks
+  const checkTaskArrivals = async () => {
+    try {
+      const currentTasks = window.currentDriverTasks || []
+      const taskArrivals = {}
+      
+      for (const task of currentTasks) {
+        if (task.status === 'in_progress') {
+          const arrivalLog = await checkIfAlreadyArrived(task.id)
+          if (arrivalLog) {
+            taskArrivals[task.id] = {
+              arrived: true,
+              timestamp: arrivalLog.timestamp
+            }
+          }
+        }
+      }
+      
+      // Store arrival info on window object for other components
+      window.taskArrivals = taskArrivals
+      console.log('📍 Task arrivals updated:', taskArrivals)
+      
+      return taskArrivals
+    } catch (error) {
+      console.warn('⚠️ Could not check task arrivals:', error)
+      return {}
     }
   }
 
@@ -1719,6 +1751,9 @@ export function useDriverTracking() {
     
     // NEW: Manual testing methods
     logBreadcrumb,
-    testGpsAndBreadcrumb
+    testGpsAndBreadcrumb,
+    
+    // NEW: Check arrival status for all current tasks
+    checkTaskArrivals
   }
 } 

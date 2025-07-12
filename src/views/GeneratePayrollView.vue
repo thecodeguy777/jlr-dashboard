@@ -94,16 +94,21 @@ function openPayrollEditor(worker) {
 
 async function handlePayrollSave(data) {
     try {
+        console.log('Saving payout data:', data)
+        
         const { error } = await supabase
             .from('payouts')
             .upsert({
                 ...data,
                 status: 'pending',
                 confirmed_at: null  // Keep it null until committed
+            }, {
+                onConflict: 'employee_id,week_start'  // Use unique constraint on employee_id + week_start
             })
 
         if (error) throw error
 
+        console.log('Payout saved successfully')
         showPayrollEditor.value = false
         await loadData() // Reload data after save
     } catch (err) {
@@ -375,20 +380,21 @@ async function loadData() {
             weekEndDay: new Date(weekEndStr).toLocaleDateString('en-US', { weekday: 'long' })
         })
 
-        // Stock logic: Simple approach
-        // - Current stock: Saturday of current week (what we're fetching correctly)
+        // Stock logic: Use selectedWeek directly for current stock
+        // - Current stock: Use selectedWeek.value (the exact date picked by user)
         // - Previous stock: Exactly 7 days before current stock
-        const currentSaturday = weekEndStr  // This is correct: 2025-06-27
+        const currentStockDate = selectedWeek.value  // Use selected date directly for current stock
         
-        const prevSaturday = new Date(currentSaturday)
-        prevSaturday.setDate(prevSaturday.getDate() - 6)  // 2025-06-27 - 7 = 2025-06-20
-        const prevWeekStr = format(prevSaturday, 'yyyy-MM-dd')
+        const prevStockDate = new Date(currentStockDate)
+        prevStockDate.setDate(prevStockDate.getDate() - 7)  // Go back exactly 7 days
+        const prevWeekStr = format(prevStockDate, 'yyyy-MM-dd')
 
         console.log('Stock dates:', {
-            current: currentSaturday,
+            current: currentStockDate,
             previous: prevWeekStr,
-            currentDay: new Date(currentSaturday).toLocaleDateString('en-US', { weekday: 'long' }),
-            previousDay: new Date(prevWeekStr).toLocaleDateString('en-US', { weekday: 'long' })
+            currentDay: new Date(currentStockDate).toLocaleDateString('en-US', { weekday: 'long' }),
+            previousDay: new Date(prevWeekStr).toLocaleDateString('en-US', { weekday: 'long' }),
+            note: 'Using selectedWeek directly for current stock, weekRange for payroll period'
         })
 
         // 1. Get all active workers
@@ -500,12 +506,12 @@ async function loadData() {
         const previousStock = prevStock || []
         console.log('Found previous stock records for exact week_start:', previousStock.length)
 
-        // 6. Get current stock (at current Saturday)
-        console.log('Fetching current stock for date:', currentSaturday)
+        // 6. Get current stock (at selected date)
+        console.log('Fetching current stock for date:', currentStockDate)
         const { data: currentStock, error: currentStockError } = await supabase
             .from('bodega_stock')
             .select('*, products(name, category, price_per_unit), workers(name)')
-            .eq('week_start', currentSaturday)
+            .eq('week_start', currentStockDate)
 
         console.log('Found current stock records:', currentStock?.length || 0)
 

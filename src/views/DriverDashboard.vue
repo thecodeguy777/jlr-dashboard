@@ -130,7 +130,7 @@
         
         <!-- Simple Progress (when working) -->
         <div v-if="isWorkSessionActive && todayTasks.length > 0" class="mt-4 text-sm text-gray-400">
-          📦 {{ completedTasks.length }} of {{ todayTasks.length }} deliveries completed
+          📋 {{ completedTasks.length }} of {{ todayTasks.length }} tasks completed
         </div>
       </div>
 
@@ -161,7 +161,7 @@
       <!-- TASK LIST (when working and has tasks) -->
       <div v-if="todayTasks.length > 0 && isWorkSessionActive" class="bg-white/5 rounded-xl p-4">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-white font-bold text-sm">📍 Today's Deliveries</h3>
+          <h3 class="text-white font-bold text-sm">📋 Today's Tasks</h3>
           <button v-if="todayTasks.length > 3" 
                   @click="isTaskListExpanded = !isTaskListExpanded"
                   class="text-xs text-blue-400 hover:text-blue-300 transition-colors">
@@ -178,8 +178,8 @@
               {{ index + 1 }}
             </div>
             <div class="flex-1">
-              <div class="text-white text-sm font-medium">{{ task.destination_name || 'Customer' }}</div>
-              <div class="text-xs text-gray-400">{{ task.destination_address || task.task_title }}</div>
+              <div class="text-white text-sm font-medium">{{ task.destination_name || 'Location' }}</div>
+              <div class="text-xs text-gray-400">{{ getTaskTypeText(task) }} • {{ task.destination_address || task.task_title }}</div>
             </div>
             <div class="text-lg">{{ getTaskStatusIcon(task) }}</div>
           </div>
@@ -187,7 +187,7 @@
         
         <div v-if="todayTasks.length > 3 && !isTaskListExpanded" class="text-center mt-2">
           <button @click="isTaskListExpanded = true" class="text-xs text-gray-400">
-            +{{ todayTasks.length - 3 }} more deliveries
+            +{{ todayTasks.length - 3 }} more tasks
           </button>
         </div>
       </div>
@@ -246,7 +246,9 @@ const {
   connectToGhostControl,
   enableGhostControl,
   // Alpha testing functions
-  testGpsAndBreadcrumb
+  testGpsAndBreadcrumb,
+  // NEW: Arrival checking
+  checkTaskArrivals
 } = useDriverTracking()
 
 // Task management composable
@@ -281,6 +283,9 @@ const {
 const driverName = ref('')
 const isTaskListExpanded = ref(false)
 
+// NEW: Arrival status checking interval
+let arrivalCheckInterval = null
+
 // Computed
 const canPerformActions = computed(() => {
   return isGpsAvailable.value && currentLocation.value && gpsAccuracy.value <= 50
@@ -294,6 +299,20 @@ const taskProgress = computed(() => {
   return getRouteProgress(todayTasks.value)
 })
 
+// NEW: Check if task has arrival logged
+const hasArrived = (task) => {
+  if (!task || task.status !== 'in_progress') return false
+  const arrivals = window.taskArrivals || {}
+  return arrivals[task.id]?.arrived || false
+}
+
+// NEW: Get arrival timestamp
+const getArrivalTime = (task) => {
+  if (!task) return null
+  const arrivals = window.taskArrivals || {}
+  return arrivals[task.id]?.timestamp || null
+}
+
 // SIMPLIFIED UX - Single Action Logic
 const getStatusIcon = () => {
   if (!isWorkSessionActive.value) return '🔴'
@@ -305,7 +324,7 @@ const getStatusIcon = () => {
 
 const getStatusText = () => {
   if (!isWorkSessionActive.value) return 'Ready to Start Work'
-  if (currentTask.value?.status === 'in_progress') return 'On Delivery'
+  if (currentTask.value?.status === 'in_progress') return 'Working on Task'
   if (todayTasks.value.length === 0) return 'Waiting for Tasks'
   if (completedTasks.value.length === todayTasks.value.length) return 'All Done!'
   return 'Working'
@@ -313,25 +332,42 @@ const getStatusText = () => {
 
 const getStatusSubtext = () => {
   if (!isWorkSessionActive.value) return 'Tap the button below to clock in'
-  if (currentTask.value?.status === 'in_progress') return `Delivering to ${currentTask.value.destination_name || 'customer'}`
+  if (currentTask.value?.status === 'in_progress') return `${getTaskTypeText(currentTask.value)} at ${currentTask.value.destination_name || 'location'}`
   if (todayTasks.value.length === 0) return 'New tasks will appear here automatically'
   if (completedTasks.value.length === todayTasks.value.length) return 'Great work today! Ready to clock out'
-  if (currentTask.value) return `Next: ${currentTask.value.destination_name || 'delivery'}`
+  if (currentTask.value) return `Next: ${getTaskTypeText(currentTask.value)} at ${currentTask.value.destination_name || 'location'}`
   return 'Keep up the great work!'
 }
 
+// NEW: Get task type text for better UX
+const getTaskTypeText = (task) => {
+  if (!task) return 'Task'
+  const taskTypes = {
+    delivery: 'Delivery',
+    pickup: 'Pickup', 
+    service: 'Service',
+    inspection: 'Inspection',
+    other: 'Task'
+  }
+  return taskTypes[task.task_type] || 'Task'
+}
+
+// Update button text and styling
 const getPrimaryButtonText = () => {
-  if (!isWorkSessionActive.value) return '🕐 START WORK'
-  if (currentTask.value?.status === 'pending') return '🚀 START DELIVERY'
-  if (currentTask.value?.status === 'in_progress') return '✅ MARK DELIVERED'
-  if (completedTasks.value.length === todayTasks.value.length) return '🕐 END WORK'
-  return '🕐 END WORK'
+  if (!isWorkSessionActive.value) return '🕐 Clock In'
+  if (currentTask.value?.status === 'pending') return '🚀 Start Task'
+  if (currentTask.value?.status === 'in_progress') {
+    return hasArrived(currentTask.value) ? '✅ Finish Task' : '📍 En Route'
+  }
+  return '🕐 Clock Out'
 }
 
 const getPrimaryButtonClass = () => {
   if (!isWorkSessionActive.value) return 'bg-green-600 hover:bg-green-700 text-white'
   if (currentTask.value?.status === 'pending') return 'bg-blue-600 hover:bg-blue-700 text-white'
-  if (currentTask.value?.status === 'in_progress') return 'bg-orange-600 hover:bg-orange-700 text-white'
+  if (currentTask.value?.status === 'in_progress') {
+    return hasArrived(currentTask.value) ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-orange-600 hover:bg-orange-700 text-white'
+  }
   return 'bg-red-600 hover:bg-red-700 text-white'
 }
 
@@ -381,6 +417,7 @@ const formatShiftStartTime = () => {
 
 const getTaskRowClass = (task) => {
   if (task.status === 'completed') return 'bg-green-500/10 border border-green-500/20'
+  if (task.status === 'in_progress' && hasArrived(task)) return 'bg-purple-500/10 border border-purple-500/20'
   if (task.status === 'in_progress') return 'bg-orange-500/10 border border-orange-500/20'
   if (task.id === currentTask.value?.id) return 'bg-blue-500/10 border border-blue-500/20'
   return 'bg-white/5'
@@ -388,6 +425,7 @@ const getTaskRowClass = (task) => {
 
 const getTaskIconClass = (task) => {
   if (task.status === 'completed') return 'bg-green-600'
+  if (task.status === 'in_progress' && hasArrived(task)) return 'bg-purple-600'
   if (task.status === 'in_progress') return 'bg-orange-600'
   if (task.id === currentTask.value?.id) return 'bg-blue-600'
   return 'bg-gray-600'
@@ -395,9 +433,18 @@ const getTaskIconClass = (task) => {
 
 const getTaskStatusIcon = (task) => {
   if (task.status === 'completed') return '✅'
+  if (task.status === 'in_progress' && hasArrived(task)) return '📍'
   if (task.status === 'in_progress') return '🔄'
   if (task.id === currentTask.value?.id) return '🎯'
   return '⏳'
+}
+
+const getTaskStatusText = (task) => {
+  if (task.status === 'completed') return 'Completed'
+  if (task.status === 'in_progress' && hasArrived(task)) return 'Arrived'
+  if (task.status === 'in_progress') return 'En Route'
+  if (task.status === 'pending') return 'Pending'
+  return task.status
 }
 
 const getVisibleTasks = () => {
@@ -477,6 +524,11 @@ const refreshTasks = async () => {
     // FIXED: Update tasks on window object for geofence detection
     window.currentDriverTasks = todayTasks.value
     console.log('🎯 Updated driver tasks for geofence detection:', todayTasks.value.length)
+    
+    // NEW: Check arrival status after loading tasks
+    if (checkTaskArrivals) {
+      await checkTaskArrivals()
+    }
   } catch (error) {
     console.error('Error refreshing tasks:', error)
     alert('❌ Failed to refresh tasks. Please try again.')
@@ -500,7 +552,7 @@ const startTask = async (task) => {
     }
     
     await startTaskAction(task.id)
-    alert(`✅ Started delivery to ${task.destination_name || 'customer'}`)
+    alert(`✅ Started ${getTaskTypeText(task).toLowerCase()} at ${task.destination_name || 'location'}`)
   } catch (error) {
     console.error('Error starting task:', error)
     alert(`❌ Failed to start task: ${error.message}`)
@@ -513,7 +565,7 @@ const completeTask = async (task) => {
     return
   }
 
-  const notes = prompt(`Complete delivery to ${task.destination_name || 'customer'}\n\nAdd delivery notes (optional):`)
+  const notes = prompt(`Complete ${getTaskTypeText(task).toLowerCase()} at ${task.destination_name || 'location'}\n\nAdd completion notes (optional):`)
   if (notes === null) return // User cancelled
 
   try {
@@ -535,11 +587,11 @@ const completeTask = async (task) => {
       }
     })
     
-    alert(`✅ Delivery completed successfully!`)
+    alert(`✅ ${getTaskTypeText(task)} completed successfully!`)
     
     // Check if all tasks are done
     if (completedTasks.value.length === todayTasks.value.length) {
-      alert('🎉 All deliveries completed! Great work today!')
+      alert('🎉 All tasks completed! Great work today!')
     }
   } catch (error) {
     console.error('Error completing task:', error)
@@ -646,15 +698,11 @@ const stopPresenceReporting = () => {
   }
 }
 
-// Initialize
+// Lifecycle
 onMounted(async () => {
+  console.log('🚚 Driver Dashboard mounting...')
+  
   try {
-    // Check if user is still authenticated before initializing
-    if (!userStore.user || !userStore.user.id) {
-      router.push('/login')
-      return
-    }
-
     // Initialize driver profile
     await initializeDriverWithRouteCheck(userStore.user.id)
     
@@ -684,6 +732,14 @@ onMounted(async () => {
     
     // SIMPLIFIED GPS initialization
     await initializeGPS()
+    
+    // NEW: Set up periodic arrival checking (every 30 seconds)
+    arrivalCheckInterval = setInterval(async () => {
+      if (checkTaskArrivals && todayTasks.value.some(t => t.status === 'in_progress')) {
+        await checkTaskArrivals()
+      }
+    }, 30000)
+    
   } catch (error) {
     console.error('Driver initialization error:', error)
     
@@ -694,6 +750,14 @@ onMounted(async () => {
     } else {
       router.push('/login')
     }
+  }
+})
+
+onUnmounted(() => {
+  // Clean up arrival checking interval
+  if (arrivalCheckInterval) {
+    clearInterval(arrivalCheckInterval)
+    arrivalCheckInterval = null
   }
 })
 
@@ -818,11 +882,6 @@ const getSystemWarnings = () => {
   
   return warnings
 }
-
-// Cleanup when component unmounts
-onUnmounted(() => {
-  stopPresenceReporting()
-})
 </script>
 
 <style scoped>
@@ -849,4 +908,4 @@ onUnmounted(() => {
   transition: color 0.2s ease;
 }
 </style> 
-}
+
