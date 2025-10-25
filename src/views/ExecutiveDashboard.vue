@@ -1152,38 +1152,41 @@ async function fetchData() {
     if (!prevInHouseError) previousPeriodDeliveries.value = prevInHouseData || []
     if (!prevSubconError) previousPeriodSubconDeliveries.value = prevSubconData || []
 
-    // Fetch payroll data (only confirmed payouts - matching AdminDashboard)
-    let payrollQuery = supabase
-      .from('payouts')
-      .select('net_total, gross_income, paid_by_hours, deductions, allowances, week_start')
-      .not('confirmed_at', 'is', null)
+    // Note: payoutBreakdown is already set above with proper name field from the first query
+    // This duplicate query below is commented out to avoid overwriting the data
 
-    // For monthly: filter by week_start date range
-    payrollQuery = payrollQuery
-      .gte('week_start', start)
-      .lte('week_start', end)
+    // // Fetch payroll data (only confirmed payouts - matching AdminDashboard)
+    // let payrollQuery = supabase
+    //   .from('payouts')
+    //   .select('net_total, gross_income, paid_by_hours, deductions, allowances, week_start')
+    //   .not('confirmed_at', 'is', null)
 
-    const { data: payouts, error: payoutError } = await payrollQuery
+    // // For monthly: filter by week_start date range
+    // payrollQuery = payrollQuery
+    //   .gte('week_start', start)
+    //   .lte('week_start', end)
 
-    if (!payoutError && payouts) {
-      actualPayrollTotal.value = payouts.reduce((sum, p) => sum + (p.net_total || 0), 0)
-      payoutBreakdown.value = payouts.map(p => {
-        const d = p.deductions || {}
-        const a = p.allowances || {}
+    // const { data: payouts, error: payoutError } = await payrollQuery
 
-        return {
-          ...p,
-          gross: (p.gross_income || 0).toFixed(2), // Use gross_income directly like AdminDashboard
-          cashAdvance: (parseFloat(d.cash_advance || 0)).toFixed(2),
-          savings: (parseFloat(d.savings || 0)).toFixed(2),
-          contributions: (parseFloat(d.sss || 0)).toFixed(2),
-          deductibles: (parseFloat(d.loan || 0)).toFixed(2),
-          allowance: Object.values(a).reduce((sum, val) => sum + (parseFloat(val) || 0), 0).toFixed(2),
-          refund: (parseFloat(a.refund || 0)).toFixed(2),
-          total: (p.net_total || 0).toFixed(2) // Add total field for computedTotalPayroll
-        }
-      })
-    }
+    // if (!payoutError && payouts) {
+    //   actualPayrollTotal.value = payouts.reduce((sum, p) => sum + (p.net_total || 0), 0)
+    //   payoutBreakdown.value = payouts.map(p => {
+    //     const d = p.deductions || {}
+    //     const a = p.allowances || {}
+
+    //     return {
+    //       ...p,
+    //       gross: (p.gross_income || 0).toFixed(2), // Use gross_income directly like AdminDashboard
+    //       cashAdvance: (parseFloat(d.cash_advance || 0)).toFixed(2),
+    //       savings: (parseFloat(d.savings || 0)).toFixed(2),
+    //       contributions: (parseFloat(d.sss || 0)).toFixed(2),
+    //       deductibles: (parseFloat(d.loan || 0)).toFixed(2),
+    //       allowance: Object.values(a).reduce((sum, val) => sum + (parseFloat(val) || 0), 0).toFixed(2),
+    //       refund: (parseFloat(a.refund || 0)).toFixed(2),
+    //       total: (p.net_total || 0).toFixed(2) // Add total field for computedTotalPayroll
+    //     }
+    //   })
+    // }
 
     // Fetch bodega stock data
     if (level.value === 'monthly') {
