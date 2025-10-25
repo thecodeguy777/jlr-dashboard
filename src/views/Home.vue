@@ -356,37 +356,20 @@
           </summary>
 
           <div class="p-4 pt-0">
-            <!-- Mobile View -->
-            <div class="space-y-4 md:hidden">
+            <!-- Mobile View - Compact Card Table -->
+            <div class="space-y-1 md:hidden">
               <div v-for="person in payoutBreakdown" :key="person.id"
-                class="bg-white/5 p-4 rounded-lg border border-white/10">
-                <div class="flex justify-between items-center mb-3">
-                  <div class="text-base font-bold text-white">{{ person.name }}</div>
-                  <div class="text-sm text-indigo-400 font-bold">₱{{ person.total }}</div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-white/80">
-                  <template v-if="parseFloat(person.gross)">
-                    <div><span class="block text-white/50 text-xs">Gross</span>₱{{ person.gross }}</div>
-                  </template>
-                  <template v-if="parseFloat(person.cashAdvance)">
-                    <div><span class="block text-white/50 text-xs">Cash Advance</span>₱{{ person.cashAdvance }}</div>
-                  </template>
-                  <template v-if="parseFloat(person.savings)">
-                    <div><span class="block text-white/50 text-xs">Savings</span>₱{{ person.savings }}</div>
-                  </template>
-                  <template v-if="parseFloat(person.contributions)">
-                    <div><span class="block text-white/50 text-xs">Contributions</span>₱{{ person.contributions }}</div>
-                  </template>
-                  <template v-if="parseFloat(person.deductibles)">
-                    <div><span class="block text-white/50 text-xs">Loan Deductibles</span>₱{{ person.deductibles }}</div>
-                  </template>
-                  <template v-if="parseFloat(person.allowance)">
-                    <div><span class="block text-white/50 text-xs">Allowance</span>₱{{ person.allowance }}</div>
-                  </template>
-                  <template v-if="parseFloat(person.refund)">
-                    <div><span class="block text-white/50 text-xs">Refund</span>₱{{ person.refund }}</div>
-                  </template>
+                class="bg-white/5 px-3 py-2 rounded border border-white/10 hover:bg-white/10 transition-colors">
+                <!-- Single Row Layout -->
+                <div class="flex items-center justify-between gap-2">
+                  <!-- Name (left side) -->
+                  <div class="text-sm font-medium text-white truncate flex-1 min-w-0">
+                    {{ person.name }}
+                  </div>
+                  <!-- Total (right side) -->
+                  <div class="text-sm font-bold text-indigo-400 whitespace-nowrap">
+                    ₱{{ person.total }}
+                  </div>
                 </div>
               </div>
             </div>
