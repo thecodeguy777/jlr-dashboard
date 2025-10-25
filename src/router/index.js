@@ -34,7 +34,8 @@ import GeneratePayrollView from '@/views/GeneratePayrollView.vue'
 import ReturnsView from '@/views/ReturnsView.vue'
 
 const routes = [
-  { path: '/', component: Home },
+  { path: '/', component: ExecutiveDashboard },
+  { path: '/home', component: Home },
   { path: '/account', component: Account },
   { path: '/login', component: Login },
 
@@ -228,8 +229,8 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
-  // Skip auth check for login page, payout pages, report pages, and executive dashboard
-  if (to.path === '/login' || to.path.startsWith('/payout/') || to.path.startsWith('/report/') || to.path === '/executive' || to.path === '/quick-pickup') {
+  // Skip auth check for login page, payout pages, report pages, executive dashboard, and home page
+  if (to.path === '/login' || to.path === '/' || to.path.startsWith('/payout/') || to.path.startsWith('/report/') || to.path === '/executive' || to.path === '/quick-pickup') {
     next()
     return
   }
