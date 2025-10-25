@@ -348,6 +348,96 @@
           <!-- Gross Summary Card -->
 
         </div>
+
+        <!-- Collapsible Payroll Breakdown Table -->
+        <details class="bg-white/5 rounded-lg border border-white/10 mt-6">
+          <summary class="cursor-pointer p-4 hover:bg-white/5 transition-colors">
+            <span class="text-white font-medium">📋 Detailed Payroll Breakdown ({{ payoutBreakdown.length }} employees)</span>
+          </summary>
+
+          <div class="p-4 pt-0">
+            <!-- Mobile View -->
+            <div class="space-y-4 md:hidden">
+              <div v-for="person in payoutBreakdown" :key="person.id"
+                class="bg-white/5 p-4 rounded-lg border border-white/10">
+                <div class="flex justify-between items-center mb-3">
+                  <div class="text-base font-bold text-white">{{ person.name }}</div>
+                  <div class="text-sm text-indigo-400 font-bold">₱{{ person.total }}</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-white/80">
+                  <template v-if="parseFloat(person.gross)">
+                    <div><span class="block text-white/50 text-xs">Gross</span>₱{{ person.gross }}</div>
+                  </template>
+                  <template v-if="parseFloat(person.cashAdvance)">
+                    <div><span class="block text-white/50 text-xs">Cash Advance</span>₱{{ person.cashAdvance }}</div>
+                  </template>
+                  <template v-if="parseFloat(person.savings)">
+                    <div><span class="block text-white/50 text-xs">Savings</span>₱{{ person.savings }}</div>
+                  </template>
+                  <template v-if="parseFloat(person.contributions)">
+                    <div><span class="block text-white/50 text-xs">Contributions</span>₱{{ person.contributions }}</div>
+                  </template>
+                  <template v-if="parseFloat(person.deductibles)">
+                    <div><span class="block text-white/50 text-xs">Loan Deductibles</span>₱{{ person.deductibles }}</div>
+                  </template>
+                  <template v-if="parseFloat(person.allowance)">
+                    <div><span class="block text-white/50 text-xs">Allowance</span>₱{{ person.allowance }}</div>
+                  </template>
+                  <template v-if="parseFloat(person.refund)">
+                    <div><span class="block text-white/50 text-xs">Refund</span>₱{{ person.refund }}</div>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <!-- Desktop Table -->
+            <div class="hidden md:block overflow-x-auto">
+              <table class="min-w-full text-sm text-white/80 table-auto">
+                <thead class="border-b border-white/10">
+                  <tr>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Name</th>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Gross</th>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Cash Advance</th>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Savings</th>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Contributions</th>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Deductibles</th>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Allowance</th>
+                    <th class="text-left py-2 pr-4 text-indigo-300">Refund</th>
+                    <th class="text-left py-2 text-indigo-300">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="person in payoutBreakdown" :key="person.id"
+                    class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                    <td class="py-2 pr-4 font-medium text-white">{{ person.name }}</td>
+                    <td class="py-2 pr-4">{{ person.gross || '' }}</td>
+                    <td class="py-2 pr-4 text-red-300">{{ person.cashAdvance || '' }}</td>
+                    <td class="py-2 pr-4 text-red-300">{{ person.savings || '' }}</td>
+                    <td class="py-2 pr-4 text-red-300">{{ person.contributions || '' }}</td>
+                    <td class="py-2 pr-4 text-red-300">{{ person.deductibles || '' }}</td>
+                    <td class="py-2 pr-4 text-green-300">{{ person.allowance || '' }}</td>
+                    <td class="py-2 pr-4 text-green-300">{{ person.refund || '' }}</td>
+                    <td class="py-2 font-bold text-indigo-400">{{ person.total || '' }}</td>
+                  </tr>
+                </tbody>
+                <tfoot class="border-t border-white/10 text-white/80 bg-white/5">
+                  <tr>
+                    <th class="text-left py-3 pr-4 text-indigo-300">Total</th>
+                    <th class="text-left py-3 pr-4">₱{{ totalColumn('gross') }}</th>
+                    <th class="text-left py-3 pr-4 text-red-400">₱{{ totalColumn('cashAdvance') }}</th>
+                    <th class="text-left py-3 pr-4 text-red-400">₱{{ totalColumn('savings') }}</th>
+                    <th class="text-left py-3 pr-4 text-red-400">₱{{ totalColumn('contributions') }}</th>
+                    <th class="text-left py-3 pr-4 text-red-400">₱{{ totalColumn('deductibles') }}</th>
+                    <th class="text-left py-3 pr-4 text-green-400">₱{{ totalColumn('allowance') }}</th>
+                    <th class="text-left py-3 pr-4 text-green-400">₱{{ totalColumn('refund') }}</th>
+                    <th class="text-left py-3 font-bold text-indigo-400">₱{{ totalColumn('total') }}</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </details>
       </div>
       <!-- Weekly Expense Breakdown -->
       <div v-if="Object.keys(expensesByCategory).length > 0"
@@ -1582,6 +1672,15 @@ function formatExpenseDate(dateStr) {
     month: 'short',
     day: 'numeric'
   })
+}
+
+// Calculate total for a column in payroll breakdown (like AdminDashboard)
+function totalColumn(key) {
+  const sum = payoutBreakdown.value.reduce((total, p) => {
+    const num = parseFloat(p[key])
+    return total + (isNaN(num) ? 0 : num)
+  }, 0)
+  return sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // Fetch all-time transactions for cumulative closing balance (like CashTracker)
