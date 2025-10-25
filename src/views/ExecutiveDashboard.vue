@@ -593,9 +593,11 @@
         </div>
       </div>
 
-      <!-- Previous Bodega Stock Summary -->
-      <div
-        class="bg-gradient-to-br from-teal-900/20 to-cyan-900/20 backdrop-blur-sm rounded-2xl p-6 border border-teal-500/30">
+      <!-- Bodega Stock Grid (Previous & Current Side by Side) -->
+      <div class="grid gap-6 md:grid-cols-2">
+        <!-- Previous Bodega Stock Summary -->
+        <div
+          class="bg-gradient-to-br from-teal-900/20 to-cyan-900/20 backdrop-blur-sm rounded-2xl p-6 border border-teal-500/30">
         <div class="flex items-center gap-3 mb-4">
           <div class="w-10 h-10 rounded-full bg-teal-500/20 flex items-center justify-center">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -674,11 +676,11 @@
             </div>
           </div>
         </details>
-      </div>
+        </div>
 
-      <!-- Current Bodega Stock Summary -->
-      <div
-        class="bg-gradient-to-br from-emerald-900/20 to-green-900/20 backdrop-blur-sm rounded-2xl p-6 border border-emerald-500/30">
+        <!-- Current Bodega Stock Summary -->
+        <div
+          class="bg-gradient-to-br from-emerald-900/20 to-green-900/20 backdrop-blur-sm rounded-2xl p-6 border border-emerald-500/30">
         <div class="flex items-center gap-3 mb-4">
           <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
             <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -755,6 +757,7 @@
             </div>
           </div>
         </details>
+        </div>
       </div>
 
       <!-- Financial Summary Grid -->
@@ -891,8 +894,8 @@ async function fetchData() {
     const { start, end } = getDateRange()
     const { start: lastStart, end: lastEnd } = getPreviousDateRange()
 
-    // Fetch payout breakdown data (matching AdminDashboard logic - filter by week_start, not confirmed_at)
-    const { data: payoutsThisWeek, error: payoutBreakdownError } = await supabase
+    // Fetch payout breakdown data (matching AdminDashboard logic)
+    let payoutQuery = supabase
       .from('payouts')
       .select(`
         employee_id,
@@ -902,13 +905,25 @@ async function fetchData() {
         allowances,
         net_total,
         confirmed_at,
+        week_start,
         workers:workers!payouts_employee_id_fkey (
           name
         )
       `)
-      .gte('week_start', start)
-      .lte('week_start', end)
       .not('confirmed_at', 'is', null)
+
+    // For monthly: filter by week_start date range, for weekly: exact week_start match
+    if (level.value === 'monthly') {
+      payoutQuery = payoutQuery
+        .gte('week_start', start)
+        .lte('week_start', end)
+    } else {
+      payoutQuery = payoutQuery
+        .gte('week_start', start)
+        .lte('week_start', end)
+    }
+
+    const { data: payoutsThisWeek, error: payoutBreakdownError } = await payoutQuery
 
     if (payoutBreakdownError) {
       console.error('Error fetching payouts:', payoutBreakdownError)
@@ -1065,12 +1080,17 @@ async function fetchData() {
     if (!prevSubconError) previousPeriodSubconDeliveries.value = prevSubconData || []
 
     // Fetch payroll data (only confirmed payouts - matching AdminDashboard)
-    const { data: payouts, error: payoutError } = await supabase
+    let payrollQuery = supabase
       .from('payouts')
-      .select('net_total, gross_income, paid_by_hours, deductions, allowances')
+      .select('net_total, gross_income, paid_by_hours, deductions, allowances, week_start')
+      .not('confirmed_at', 'is', null)
+
+    // For monthly: filter by week_start date range
+    payrollQuery = payrollQuery
       .gte('week_start', start)
       .lte('week_start', end)
-      .not('confirmed_at', 'is', null)
+
+    const { data: payouts, error: payoutError } = await payrollQuery
 
     if (!payoutError && payouts) {
       actualPayrollTotal.value = payouts.reduce((sum, p) => sum + (p.net_total || 0), 0)
@@ -1092,47 +1112,72 @@ async function fetchData() {
       })
     }
 
-    // Fetch current bodega stock data (week 0, starts June 28)
-    const today = new Date(deliveryDate.value)
-    today.setHours(0, 0, 0, 0)
-    const saturday = calculateSaturday(today)
-    const nextSaturday = new Date(saturday)
-    nextSaturday.setDate(saturday.getDate() + 7)
-    const nextWeekStart = calculateBodegaWeekStart(nextSaturday)
-    const currentWeekStart = formatDateForDB(nextWeekStart)
+    // Fetch bodega stock data
+    if (level.value === 'monthly') {
+      // For monthly: aggregate all bodega stock entries within the month
+      const { data: currentMonthStockData, error: currentStockError } = await supabase
+        .from('bodega_stock')
+        .select('*, products(name, category, price_per_unit), workers(name)')
+        .gte('week_start', start)
+        .lte('week_start', end)
 
-    console.log('Current Stock Query:', {
-      weekStart: currentWeekStart,
-      selectedDate: deliveryDate.value
-    })
+      if (!currentStockError && currentMonthStockData) {
+        currentBodegaStock.value = currentMonthStockData
+      }
 
-    // Use the calculated current week start date
-    currentBodegaStockDate.value = currentWeekStart // Store the date for display
-    const { data: currentStockData, error: currentStockError } = await supabase
-      .from('bodega_stock')
-      .select('*, products(name, category, price_per_unit), workers(name)')
-      .eq('week_start', currentWeekStart)
+      // Fetch previous month stock for comparison
+      const { data: prevMonthStockData, error: prevStockError } = await supabase
+        .from('bodega_stock')
+        .select('*, products(name, category, price_per_unit), workers(name)')
+        .gte('week_start', lastStart)
+        .lte('week_start', lastEnd)
 
-    if (!currentStockError && currentStockData) {
-      currentBodegaStock.value = currentStockData
-    }
+      if (!prevStockError && prevMonthStockData) {
+        bodegaStock.value = prevMonthStockData
+      }
+    } else {
+      // Weekly mode: use existing week-based logic
+      const today = new Date(deliveryDate.value)
+      today.setHours(0, 0, 0, 0)
+      const saturday = calculateSaturday(today)
+      const nextSaturday = new Date(saturday)
+      nextSaturday.setDate(saturday.getDate() + 7)
+      const nextWeekStart = calculateBodegaWeekStart(nextSaturday)
+      const currentWeekStart = formatDateForDB(nextWeekStart)
 
-    // Fetch previous bodega stock data (week -1, starts June 21)
-    const startOfWeek = calculateBodegaWeekStart(saturday)
-    const prevWeekStartStr = formatDateForDB(startOfWeek)
+      console.log('Current Stock Query:', {
+        weekStart: currentWeekStart,
+        selectedDate: deliveryDate.value
+      })
 
-    console.log('Previous Stock Query:', {
-      weekStart: prevWeekStartStr,
-      selectedDate: deliveryDate.value
-    })
+      // Use the calculated current week start date
+      currentBodegaStockDate.value = currentWeekStart // Store the date for display
+      const { data: currentStockData, error: currentStockError } = await supabase
+        .from('bodega_stock')
+        .select('*, products(name, category, price_per_unit), workers(name)')
+        .eq('week_start', currentWeekStart)
 
-    const { data: prevStockData, error: prevStockError } = await supabase
-      .from('bodega_stock')
-      .select('*, products(name, category, price_per_unit), workers(name)')
-      .eq('week_start', prevWeekStartStr)
+      if (!currentStockError && currentStockData) {
+        currentBodegaStock.value = currentStockData
+      }
 
-    if (!prevStockError && prevStockData) {
-      bodegaStock.value = prevStockData
+      // Fetch previous bodega stock data (week -1, starts June 21)
+      const startOfWeek = calculateBodegaWeekStart(saturday)
+      const prevWeekStartStr = formatDateForDB(startOfWeek)
+
+      console.log('Previous Stock Query:', {
+        weekStart: prevWeekStartStr,
+        selectedDate: deliveryDate.value
+      })
+
+      const { data: prevStockData, error: prevStockError } = await supabase
+        .from('bodega_stock')
+        .select('*, products(name, category, price_per_unit), workers(name)')
+        .eq('week_start', prevWeekStartStr)
+
+      if (!prevStockError && prevStockData) {
+        bodegaStock.value = prevStockData
+      }
     }
 
   } catch (error) {
