@@ -1,5 +1,5 @@
 <template>
-  E<div
+  <div
     class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-950 to-gray-800 text-white p-3 md:p-6 space-y-4 md:space-y-8">
     <!-- Enhanced Header -->
     <div class="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 md:gap-4">
@@ -98,20 +98,20 @@
 
               <!-- Sales, Cost, Profit Grid -->
               <div class="grid grid-cols-3 gap-2 md:gap-4 mb-2">
-                <div class="text-center">
+                <div class="text-center min-w-0">
                   <p class="text-green-300 text-xs font-medium">SALES</p>
-                  <p class="text-green-400 font-bold text-sm md:text-lg">₱{{ Math.round(totalSales).toLocaleString() }}
+                  <p class="text-green-400 font-bold text-xs md:text-sm lg:text-base break-words">₱{{ Math.round(totalSales).toLocaleString() }}
                   </p>
                 </div>
-                <div class="text-center">
+                <div class="text-center min-w-0">
                   <p class="text-red-300 text-xs font-medium">COST</p>
-                  <p class="text-red-400 font-bold text-sm md:text-lg">₱{{ Math.round(totalCosts).toLocaleString() }}
+                  <p class="text-red-400 font-bold text-xs md:text-sm lg:text-base break-words">₱{{ Math.round(totalCosts).toLocaleString() }}
                   </p>
                 </div>
-                <div class="text-center">
+                <div class="text-center min-w-0">
                   <p class="text-purple-200 text-xs font-medium">PROFIT</p>
                   <p :class="[
-                    'font-bold text-sm md:text-lg',
+                    'font-bold text-xs md:text-sm lg:text-base break-words',
                     totalProfit >= 0 ? 'text-green-400' : 'text-red-400'
                   ]">
                     {{ totalProfit >= 0 ? '+' : '' }}₱{{ Math.round(totalProfit).toLocaleString() }}
@@ -129,15 +129,17 @@
                   <span>Scrap Revenue:</span>
                   <span>₱{{ Math.round(scrapRevenue).toLocaleString() }}</span>
                 </div>
+                <div class="flex justify-between">
+                  <span>Payroll:</span>
+                  <span>₱{{ computedTotalPayroll.toLocaleString() }}</span>
+                </div>
               </div>
 
-              <p class="text-purple-100/80 text-xs md:text-sm">{{ totalDeliveries.toLocaleString() }} pieces delivered
-                (Single & Double Walled only)</p>
             </div>
           </div>
 
           <!-- Quick Stats -->
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 pt-3 md:pt-4 border-t border-white/20">
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 pt-3 md:pt-4 border-t border-white/20 items-center">
             <div class="text-center">
               <p class="text-purple-100/80 text-xs font-medium">In-House</p>
               <p class="text-white font-bold text-sm md:text-lg">₱{{ Math.round(totalPayroll).toLocaleString() }}</p>
@@ -146,10 +148,6 @@
               <p class="text-purple-100/80 text-xs font-medium">Subcontractors</p>
               <p class="text-white font-bold text-sm md:text-lg">₱{{ Math.round(subcontractorRevenue).toLocaleString()
               }}</p>
-            </div>
-            <div class="text-center">
-              <p class="text-purple-100/80 text-xs font-medium">Active Workers</p>
-              <p class="text-white font-bold text-sm md:text-lg">{{ activeWorkers + activeSubcontractors }}</p>
             </div>
             <div class="text-center">
               <p class="text-purple-100/80 text-xs font-medium">Avg/Piece</p>
@@ -233,7 +231,7 @@
                     </path>
                   </svg>
                 </div>
-                <span class="text-blue-300 text-sm font-medium">In-house Production</span>
+                <span class="text-blue-300 text-sm font-medium">In-house</span>
               </div>
               <p class="text-white text-xl font-bold">{{ filteredInHouseDeliveries.length }} deliveries</p>
             </div>
@@ -263,7 +261,7 @@
                     </path>
                   </svg>
                 </div>
-                <span class="text-purple-300 text-sm font-medium">Subcontractor Production</span>
+                <span class="text-purple-300 text-sm font-medium">Subcontractor</span>
               </div>
               <p class="text-white text-xl font-bold">{{ filteredSubconDeliveries.length }} deliveries</p>
             </div>
@@ -329,7 +327,7 @@
 
             <div class="flex items-center justify-between mb-2">
               <span class="text-indigo-300 text-sm font-medium">Net Payroll</span>
-              <span class="text-indigo-400 font-bold text-xl">₱{{ Math.round(totalPayroll).toLocaleString() }}</span>
+              <span class="text-indigo-400 font-bold text-xl">₱{{ computedTotalPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
             </div>
             <div class="text-xs text-indigo-100/60 mt-2">
               Only confirmed payouts for this period
@@ -413,24 +411,35 @@
           </div>
         </div>
 
-        <!-- Total Summary -->
-        <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
-          <div class="space-y-1">
-            <span class="text-white/80 font-medium">Total Weekly Expenses</span>
-            <p class="text-xs" :class="{
-              'text-green-400': expensesPercentChange < 0,
-              'text-orange-400': expensesPercentChange > 0,
-              'text-white/40': expensesPercentChange === 0
-            }">
-              <span v-if="expensesPercentChange > 0">↑ +{{ expensesPercentChange }}% from last {{ level === 'weekly' ?
-                'week' : level === 'monthly' ? 'month' : 'day' }}</span>
-              <span v-else-if="expensesPercentChange < 0">↓ {{ expensesPercentChange }}% from last {{ level === 'weekly'
-                ? 'week' : level === 'monthly' ? 'month' : 'day' }}</span>
-              <span v-else>— No change from last {{ level === 'weekly' ? 'week' : level === 'monthly' ? 'month' : 'day'
-              }}</span>
-            </p>
+        <!-- Total Summary with Balance Remaining -->
+        <div class="mt-6 pt-4 border-t border-white/10 space-y-3">
+          <div class="flex justify-between items-center">
+            <div class="space-y-1">
+              <span class="text-white/80 font-medium">Total Weekly Expenses</span>
+              <p class="text-xs" :class="{
+                'text-green-400': expensesPercentChange < 0,
+                'text-orange-400': expensesPercentChange > 0,
+                'text-white/40': expensesPercentChange === 0
+              }">
+                <span v-if="expensesPercentChange > 0">↑ +{{ expensesPercentChange }}% from last {{ level === 'weekly' ?
+                  'week' : level === 'monthly' ? 'month' : 'day' }}</span>
+                <span v-else-if="expensesPercentChange < 0">↓ {{ expensesPercentChange }}% from last {{ level === 'weekly'
+                  ? 'week' : level === 'monthly' ? 'month' : 'day' }}</span>
+                <span v-else>— No change from last {{ level === 'weekly' ? 'week' : level === 'monthly' ? 'month' : 'day'
+                }}</span>
+              </p>
+            </div>
+            <span class="text-2xl font-bold text-orange-400">₱{{ (totalWeeklyExpenses || 0).toLocaleString() }}</span>
           </div>
-          <span class="text-2xl font-bold text-orange-400">₱{{ (totalWeeklyExpenses || 0).toLocaleString() }}</span>
+          <div class="flex justify-between items-center pt-3 border-t border-orange-500/30">
+            <span class="text-white font-semibold">Balance Remaining:</span>
+            <span :class="[
+              'text-2xl font-bold',
+              balanceRemaining >= 0 ? 'text-green-400' : 'text-red-400'
+            ]">
+              {{ balanceRemaining >= 0 ? '+' : '' }}₱{{ balanceRemaining.toLocaleString() }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -627,7 +636,7 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 text-xs">
+        <div class="grid grid-cols-2 gap-4 text-xs mb-4">
           <div>
             <span class="text-white/60">Active Workers:</span>
             <span class="text-white font-medium ml-2">{{ bodegaActiveWorkers }}</span>
@@ -638,6 +647,33 @@
               bodegaActiveWorkers).toLocaleString() : '0' }}</span>
           </div>
         </div>
+
+        <!-- Grouped by Product -->
+        <details class="bg-white/5 rounded-lg border border-white/10">
+          <summary class="cursor-pointer p-4 hover:bg-white/5 transition-colors">
+            <span class="text-white font-medium">📦 Grouped by Product ({{ previousBodegaByProduct.length }} products)</span>
+          </summary>
+
+          <div class="p-4 pt-0 space-y-3">
+            <div v-for="product in previousBodegaByProduct" :key="product.productName"
+              class="bg-white/5 rounded-lg p-3 border border-white/10">
+              <!-- Product Name -->
+              <div class="font-bold text-teal-300 mb-2">{{ product.productName }}</div>
+
+              <!-- Worker entries -->
+              <div class="space-y-1 ml-3 mb-2">
+                <div v-for="(entry, idx) in product.entries" :key="idx" class="text-sm text-white/80">
+                  • {{ entry.workerName }} – {{ entry.quantity.toLocaleString() }} pcs ₱{{ entry.value.toLocaleString() }}
+                </div>
+              </div>
+
+              <!-- Product Total -->
+              <div class="border-t border-white/20 pt-2 mt-2 text-sm font-medium text-teal-400">
+                ➡ Total = {{ product.totalQty.toLocaleString() }} pcs ₱{{ product.totalValue.toLocaleString() }}
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <!-- Current Bodega Stock Summary -->
@@ -652,7 +688,7 @@
           </div>
           <div>
             <h3 class="text-lg font-bold text-white">Current Bodega Stock Summary</h3>
-            <p class="text-emerald-300 text-sm">Current week inventory levels by category</p>
+            <p class="text-emerald-300 text-sm">Fetching data from: {{ new Date(currentBodegaStockDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) }}</p>
           </div>
         </div>
 
@@ -662,8 +698,7 @@
               <span class="text-emerald-300 text-sm font-medium">Single Walled</span>
             </div>
             <p class="text-white text-2xl font-bold">{{ currentBodegaSingleWallTotal.toLocaleString() }} pcs</p>
-            <p class="text-emerald-400 text-sm">₱{{ Math.round(currentBodegaSingleWallValue).toLocaleString() }} value
-            </p>
+            <p class="text-emerald-400 text-sm">₱{{ Math.round(currentBodegaSingleWallValue).toLocaleString() }} value</p>
           </div>
 
           <div class="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -678,23 +713,48 @@
             <div class="flex items-center gap-2 mb-2">
               <span class="text-white/70 text-sm font-medium">Total Stock</span>
             </div>
-            <p class="text-white text-2xl font-bold">{{ (currentBodegaSingleWallTotal +
-              currentBodegaDoubleWallTotal).toLocaleString() }} pcs</p>
+            <p class="text-white text-2xl font-bold">{{ (currentBodegaSingleWallTotal + currentBodegaDoubleWallTotal).toLocaleString() }} pcs</p>
             <p class="text-white/70 text-sm">₱{{ Math.round(currentBodegaTotalValue).toLocaleString() }} total value</p>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 text-xs">
+        <div class="grid grid-cols-2 gap-4 text-xs mb-4">
           <div>
             <span class="text-white/60">Active Workers:</span>
             <span class="text-white font-medium ml-2">{{ currentBodegaActiveWorkers }}</span>
           </div>
           <div>
             <span class="text-white/60">Avg per Worker:</span>
-            <span class="text-white font-medium ml-2">₱{{ currentBodegaActiveWorkers > 0 ?
-              Math.round(currentBodegaTotalValue / currentBodegaActiveWorkers).toLocaleString() : '0' }}</span>
+            <span class="text-white font-medium ml-2">₱{{ currentBodegaActiveWorkers > 0 ? Math.round(currentBodegaTotalValue / currentBodegaActiveWorkers).toLocaleString() : '0' }}</span>
           </div>
         </div>
+
+        <!-- Grouped by Product -->
+        <details class="bg-white/5 rounded-lg border border-white/10">
+          <summary class="cursor-pointer p-4 hover:bg-white/5 transition-colors">
+            <span class="text-white font-medium">📦 Grouped by Product ({{ bodegaByProduct.length }} products)</span>
+          </summary>
+
+          <div class="p-4 pt-0 space-y-3">
+            <div v-for="product in bodegaByProduct" :key="product.productName"
+              class="bg-white/5 rounded-lg p-3 border border-white/10">
+              <!-- Product Name -->
+              <div class="font-bold text-emerald-300 mb-2">{{ product.productName }}</div>
+
+              <!-- Worker entries -->
+              <div class="space-y-1 ml-3 mb-2">
+                <div v-for="(entry, idx) in product.entries" :key="idx" class="text-sm text-white/80">
+                  • {{ entry.workerName }} – {{ entry.quantity.toLocaleString() }} pcs ₱{{ entry.value.toLocaleString() }}
+                </div>
+              </div>
+
+              <!-- Product Total -->
+              <div class="border-t border-white/20 pt-2 mt-2 text-sm font-medium text-emerald-400">
+                ➡ Total = {{ product.totalQty.toLocaleString() }} pcs ₱{{ product.totalValue.toLocaleString() }}
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <!-- Financial Summary Grid -->
@@ -739,8 +799,8 @@
           </div>
         </div>
 
-
       </div>
+
     </div>
   </div>
 </template>
@@ -768,12 +828,23 @@ const deliveries = ref([])
 const subconDeliveries = ref([])
 const clientPriceMap = ref({})
 const weeklyScrapRevenue = ref(0)
+const lastWeekScrapRevenue = ref(0) // Previous week scrap revenue for comparison
+const scrapPercentChange = ref(0) // Scrap revenue percentage change
 const previousPeriodDeliveries = ref([])
 const previousPeriodSubconDeliveries = ref([])
 const actualPayrollTotal = ref(0)
 const bodegaStock = ref([]) // Previous week stock
 const currentBodegaStock = ref([]) // Current week stock
+const currentBodegaStockDate = ref('') // Date being fetched for current bodega stock
 const payoutBreakdown = ref([]) // Add payoutBreakdown data
+
+// Computed: Total payroll from breakdown (matching AdminDashboard)
+const computedTotalPayroll = computed(() => {
+  return payoutBreakdown.value.reduce((sum, person) => {
+    const total = parseFloat(person.total) || 0
+    return sum + total
+  }, 0)
+})
 
 function getCurrentDate() {
   const today = new Date()
@@ -790,15 +861,15 @@ const selectedDate = computed(() => new Date(deliveryDate.value))
 
 const weekStart = computed(() => {
   const date = new Date(selectedDate.value)
-  const start = new Date(date)
-  start.setDate(date.getDate() - date.getDay())
+  const saturday = calculateSaturday(date)
+  const start = calculateStartOfWeek(saturday)
   start.setHours(0, 0, 0, 0)
   return start
 })
 
 const weekEnd = computed(() => {
   const end = new Date(weekStart.value)
-  end.setDate(end.getDate() + 6)
+  end.setDate(end.getDate() + 7)
   end.setHours(23, 59, 59, 999)
   return end
 })
@@ -820,7 +891,7 @@ async function fetchData() {
     const { start, end } = getDateRange()
     const { start: lastStart, end: lastEnd } = getPreviousDateRange()
 
-    // Fetch payout breakdown data
+    // Fetch payout breakdown data (matching AdminDashboard logic - filter by week_start, not confirmed_at)
     const { data: payoutsThisWeek, error: payoutBreakdownError } = await supabase
       .from('payouts')
       .select(`
@@ -835,8 +906,9 @@ async function fetchData() {
           name
         )
       `)
-      .gte('confirmed_at', start)
-      .lte('confirmed_at', end)
+      .gte('week_start', start)
+      .lte('week_start', end)
+      .not('confirmed_at', 'is', null)
 
     if (payoutBreakdownError) {
       console.error('Error fetching payouts:', payoutBreakdownError)
@@ -862,7 +934,7 @@ async function fetchData() {
         const d = p.deductions || {}
         const a = p.allowances || {}
 
-        employeePayouts[p.employee_id].gross += (p.gross_income || 0) + (p.paid_by_hours || 0)
+        employeePayouts[p.employee_id].gross += (p.gross_income || 0)
         employeePayouts[p.employee_id].cashAdvance += parseFloat(d.cash_advance || 0)
         employeePayouts[p.employee_id].savings += parseFloat(d.savings || 0)
         employeePayouts[p.employee_id].contributions += parseFloat(d.sss || 0)
@@ -896,8 +968,17 @@ async function fetchData() {
       })
     }
 
-    // Fetch cash tracker data (expenses and comparisons)
-    await fetchCashTrackerData(start, end, lastStart, lastEnd)
+    // Fetch all-time balance (cumulative closing balance like CashTracker)
+    await fetchAllTimeBalance()
+
+    // Fetch cash tracker data (expenses and comparisons) - use transaction date ranges (Sunday-based)
+    const { start: transStart, end: transEnd } = getTransactionDateRange()
+    const { start: transLastStart, end: transLastEnd } = getPreviousTransactionDateRange()
+    console.log('🔍 Transaction date ranges:', {
+      current: { start: transStart, end: transEnd },
+      previous: { start: transLastStart, end: transLastEnd }
+    })
+    await fetchCashTrackerData(transStart, transEnd, transLastStart, transLastEnd)
 
     // Fetch client prices first
     const { data: clientPrices, error: priceErr } = await supabase
@@ -983,23 +1064,30 @@ async function fetchData() {
     if (!prevInHouseError) previousPeriodDeliveries.value = prevInHouseData || []
     if (!prevSubconError) previousPeriodSubconDeliveries.value = prevSubconData || []
 
-    // Fetch payroll data (only confirmed payouts)
+    // Fetch payroll data (only confirmed payouts - matching AdminDashboard)
     const { data: payouts, error: payoutError } = await supabase
       .from('payouts')
-      .select('net_total, gross_income, paid_by_hours')
-      .gte('confirmed_at', start)
-      .lte('confirmed_at', end)
+      .select('net_total, gross_income, paid_by_hours, deductions, allowances')
+      .gte('week_start', start)
+      .lte('week_start', end)
+      .not('confirmed_at', 'is', null)
 
     if (!payoutError && payouts) {
       actualPayrollTotal.value = payouts.reduce((sum, p) => sum + (p.net_total || 0), 0)
       payoutBreakdown.value = payouts.map(p => {
-        const grossIncome = p.gross_income || 0
-        const paidByHours = p.paid_by_hours || {}
-        const inhouseHours = parseFloat(paidByHours.inhouse || 0)
-        const assistantHours = parseFloat(paidByHours.assistant || 0)
+        const d = p.deductions || {}
+        const a = p.allowances || {}
+
         return {
           ...p,
-          gross: grossIncome + inhouseHours + assistantHours
+          gross: (p.gross_income || 0).toFixed(2), // Use gross_income directly like AdminDashboard
+          cashAdvance: (parseFloat(d.cash_advance || 0)).toFixed(2),
+          savings: (parseFloat(d.savings || 0)).toFixed(2),
+          contributions: (parseFloat(d.sss || 0)).toFixed(2),
+          deductibles: (parseFloat(d.loan || 0)).toFixed(2),
+          allowance: Object.values(a).reduce((sum, val) => sum + (parseFloat(val) || 0), 0).toFixed(2),
+          refund: (parseFloat(a.refund || 0)).toFixed(2),
+          total: (p.net_total || 0).toFixed(2) // Add total field for computedTotalPayroll
         }
       })
     }
@@ -1010,7 +1098,7 @@ async function fetchData() {
     const saturday = calculateSaturday(today)
     const nextSaturday = new Date(saturday)
     nextSaturday.setDate(saturday.getDate() + 7)
-    const nextWeekStart = calculateStartOfWeek(nextSaturday)
+    const nextWeekStart = calculateBodegaWeekStart(nextSaturday)
     const currentWeekStart = formatDateForDB(nextWeekStart)
 
     console.log('Current Stock Query:', {
@@ -1018,19 +1106,19 @@ async function fetchData() {
       selectedDate: deliveryDate.value
     })
 
-    // Temporarily hardcode to June 27, 2025
-    const june27WeekStart = '2025-06-27' // June 27, 2025
+    // Use the calculated current week start date
+    currentBodegaStockDate.value = currentWeekStart // Store the date for display
     const { data: currentStockData, error: currentStockError } = await supabase
       .from('bodega_stock')
       .select('*, products(name, category, price_per_unit), workers(name)')
-      .eq('week_start', june27WeekStart)
+      .eq('week_start', currentWeekStart)
 
     if (!currentStockError && currentStockData) {
       currentBodegaStock.value = currentStockData
     }
 
     // Fetch previous bodega stock data (week -1, starts June 21)
-    const startOfWeek = calculateStartOfWeek(saturday)
+    const startOfWeek = calculateBodegaWeekStart(saturday)
     const prevWeekStartStr = formatDateForDB(startOfWeek)
 
     console.log('Previous Stock Query:', {
@@ -1086,6 +1174,36 @@ function getDateRange() {
   }
 }
 
+// Date range specifically for transaction data (expenses, scrap) - uses Sunday-based weeks
+function getTransactionDateRange() {
+  if (level.value === 'weekly') {
+    // Use 6-day calculation (Sunday to Saturday) to match AdminDashboard and database
+    const today = new Date(deliveryDate.value)
+    today.setHours(0, 0, 0, 0)
+
+    const saturday = calculateSaturday(today)
+    const startOfWeek = new Date(saturday)
+    startOfWeek.setDate(saturday.getDate() - 6)  // Sunday-based week
+
+    return {
+      start: formatDateForDB(startOfWeek),
+      end: formatDateForDB(saturday)
+    }
+  } else if (level.value === 'monthly') {
+    return {
+      start: monthStart.value.toISOString().split('T')[0],
+      end: monthEnd.value.toISOString().split('T')[0]
+    }
+  } else {
+    const nextDay = new Date(deliveryDate.value)
+    nextDay.setDate(nextDay.getDate() + 1)
+    return {
+      start: deliveryDate.value,
+      end: formatDateForDB(nextDay)
+    }
+  }
+}
+
 // AdminDashboard's date calculation functions
 function calculateSaturday(date) {
   const d = new Date(date)
@@ -1098,6 +1216,13 @@ function calculateSaturday(date) {
 }
 
 function calculateStartOfWeek(saturday) {
+  const startOfWeek = new Date(saturday)
+  startOfWeek.setDate(saturday.getDate() - 7)
+  return startOfWeek
+}
+
+// Separate function for bodega stock (uses old 6-day calculation)
+function calculateBodegaWeekStart(saturday) {
   const startOfWeek = new Date(saturday)
   startOfWeek.setDate(saturday.getDate() - 6)
   return startOfWeek
@@ -1118,6 +1243,45 @@ function getPreviousDateRange() {
     const lastSaturday = new Date(saturday)
     lastSaturday.setDate(saturday.getDate() - 7)
     const lastStartOfWeek = calculateStartOfWeek(lastSaturday)
+
+    return {
+      start: formatDateForDB(lastStartOfWeek),
+      end: formatDateForDB(lastSaturday)
+    }
+  } else if (level.value === 'monthly') {
+    const prevMonthStart = new Date(monthStart.value)
+    prevMonthStart.setMonth(prevMonthStart.getMonth() - 1)
+    const prevMonthEnd = new Date(monthEnd.value)
+    prevMonthEnd.setMonth(prevMonthEnd.getMonth() - 1)
+
+    return {
+      start: prevMonthStart.toISOString().split('T')[0],
+      end: prevMonthEnd.toISOString().split('T')[0]
+    }
+  } else {
+    const prevDay = new Date(deliveryDate.value)
+    prevDay.setDate(prevDay.getDate() - 1)
+    const prevDayStr = prevDay.toISOString().split('T')[0]
+
+    return {
+      start: prevDayStr,
+      end: prevDayStr
+    }
+  }
+}
+
+// Previous transaction date range - uses Sunday-based weeks
+function getPreviousTransactionDateRange() {
+  if (level.value === 'weekly') {
+    // Use 6-day calculation (Sunday to Saturday) for previous week
+    const today = new Date(deliveryDate.value)
+    today.setHours(0, 0, 0, 0)
+
+    const saturday = calculateSaturday(today)
+    const lastSaturday = new Date(saturday)
+    lastSaturday.setDate(saturday.getDate() - 7)
+    const lastStartOfWeek = new Date(lastSaturday)
+    lastStartOfWeek.setDate(lastSaturday.getDate() - 6)  // Sunday-based week
 
     return {
       start: formatDateForDB(lastStartOfWeek),
@@ -1254,32 +1418,27 @@ const productSales = computed(() => {
   return inHouseSales + subconSales
 })
 
-// Total Costs (what we spend to produce) - using proper cost logic
+// Total Costs (what we spend to produce) - matching AdminDashboard logic
 const totalCosts = computed(() => {
-  // Subcontractor costs
+  // Product costs (in-house production costs + subcontractor costs)
+  const inHouseCosts = sumCosts(filteredInHouseDeliveries.value, 'inhouse')
   const subconCosts = sumCosts(filteredSubconDeliveries.value, 'subcon')
-  console.log('Subcontractor Costs:', subconCosts)
 
-  // Use gross payroll instead of net payroll
-  const grossPayrollCosts = totalGross.value
-  console.log('Gross Payroll Costs:', grossPayrollCosts)
+  // Add payroll and expenses to cost
+  const total = inHouseCosts + subconCosts + computedTotalPayroll.value + (totalWeeklyExpenses.value || 0)
 
-  // Weekly expenses breakdown
-  const weeklyExpenses = totalWeeklyExpenses.value || 0
-  console.log('Weekly Expenses:', weeklyExpenses)
-
-  const total = subconCosts + grossPayrollCosts + weeklyExpenses
   console.log('Total Costs Breakdown:', {
+    inHouseCosts,
     subconCosts,
-    grossPayrollCosts,
-    weeklyExpenses,
+    payroll: computedTotalPayroll.value,
+    expenses: totalWeeklyExpenses.value,
     total
   })
 
   return total
 })
 
-// Total Profit (Sales - Costs)
+// Total Profit (Sales - Costs which already includes payroll and expenses)
 const totalProfit = computed(() => {
   return totalSales.value - totalCosts.value
 })
@@ -1339,6 +1498,9 @@ const expensesByCategory = ref({})
 const lastWeekExpenses = ref(0)
 const expensesPercentChange = ref(0)
 const expandedCategories = ref(new Set())
+const totalWeeklyTopups = ref(0) // All topups (for closing balance calculation)
+const allTimeTopups = ref(0) // Cumulative topups from all time
+const allTimeExpenses = ref(0) // Cumulative expenses from all time
 
 // Function to toggle category expansion
 function toggleCategoryExpansion(categoryName) {
@@ -1377,15 +1539,52 @@ function formatExpenseDate(dateStr) {
   })
 }
 
+// Fetch all-time transactions for cumulative closing balance (like CashTracker)
+async function fetchAllTimeBalance() {
+  try {
+    const { data: allTransactions, error } = await supabase
+      .from('transactions')
+      .select('*')
+
+    if (error) {
+      console.error('All-time balance fetch error:', error)
+      return
+    }
+
+    const allTopups = allTransactions?.filter(t => t.type === 'topup') || []
+    const allExpenses = allTransactions?.filter(t => t.type === 'expense') || []
+
+    allTimeTopups.value = allTopups.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+    allTimeExpenses.value = allExpenses.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+
+    console.log('💰 All-time balance:', {
+      topups: allTimeTopups.value,
+      expenses: allTimeExpenses.value,
+      balance: allTimeTopups.value - allTimeExpenses.value
+    })
+  } catch (error) {
+    console.error('Error fetching all-time balance:', error)
+    allTimeTopups.value = 0
+    allTimeExpenses.value = 0
+  }
+}
+
 // Fetch cash tracker data with comparisons (like AdminDashboard)
 async function fetchCashTrackerData(start, end, lastStart, lastEnd) {
   try {
+    console.log('🔄 Fetching cash tracker data for:', { start, end, lastStart, lastEnd })
+
     // Fetch current week transactions
     const { data: transactions, error } = await supabase
       .from('transactions')
       .select('*')
       .gte('date', start)
       .lte('date', end)
+
+    console.log('📊 Transactions fetched:', {
+      count: transactions?.length || 0,
+      transactions: transactions
+    })
 
     // Fetch last week transactions for comparison
     const { data: lastWeekTransactions, error: lastWeekError } = await supabase
@@ -1399,13 +1598,15 @@ async function fetchCashTrackerData(start, end, lastStart, lastEnd) {
       return
     }
 
-    // Filter current week expenses and scrap topups
+    // Filter current week expenses and topups
     const expenses = transactions?.filter(t => t.type === 'expense') || []
-    const scrapTopups = transactions?.filter(t => t.type === 'topup' && t.category === 'Scrap') || []
-    
+    const allTopups = transactions?.filter(t => t.type === 'topup') || []
+    const scrapTopups = allTopups.filter(t => t.category === 'Scrap')
+
     weeklyExpenses.value = expenses
     weeklyScrapRevenue.value = scrapTopups.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
     totalWeeklyExpenses.value = expenses.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+    totalWeeklyTopups.value = allTopups.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
 
     // Filter last week expenses and scrap topups
     const lastExpenses = lastWeekTransactions?.filter(t => t.type === 'expense') || []
@@ -1705,16 +1906,43 @@ watch([scrapRevenue, deliveryDate, level], updateScrapChange)
 // Initial update
 onMounted(updateScrapChange)
 
-// Payroll data using actual payout data (with +1000 offset when not zero per President's request)
+// Payroll data using actual payout data
 const totalPayroll = computed(() => {
-  const baseAmount = actualPayrollTotal.value || 0
-  // Add +1000 offset when payroll is not zero (President's special request)
-  return baseAmount > 0 ? baseAmount + 1000 : baseAmount
+  return actualPayrollTotal.value || 0
+})
+
+// Individual deduction totals (matching AdminDashboard logic)
+const totalCashAdvance = computed(() => {
+  return payoutBreakdown.value.reduce((sum, p) => {
+    const num = parseFloat(p.cashAdvance || 0)
+    return sum + (isNaN(num) ? 0 : num)
+  }, 0)
+})
+
+const totalSavings = computed(() => {
+  return payoutBreakdown.value.reduce((sum, p) => {
+    const num = parseFloat(p.savings || 0)
+    return sum + (isNaN(num) ? 0 : num)
+  }, 0)
+})
+
+const totalContributions = computed(() => {
+  return payoutBreakdown.value.reduce((sum, p) => {
+    const num = parseFloat(p.contributions || 0)
+    return sum + (isNaN(num) ? 0 : num)
+  }, 0)
+})
+
+const totalDeductibles = computed(() => {
+  return payoutBreakdown.value.reduce((sum, p) => {
+    const num = parseFloat(p.deductibles || 0)
+    return sum + (isNaN(num) ? 0 : num)
+  }, 0)
 })
 
 const totalDeductions = computed(() => {
-  // Calculate total deductions (difference between gross and net)
-  return totalGross.value - totalPayroll.value
+  // Sum of all deduction types (matching AdminDashboard logic)
+  return totalCashAdvance.value + totalSavings.value + totalContributions.value + totalDeductibles.value
 })
 
 // Bodega Stock computed properties
@@ -1807,6 +2035,99 @@ const currentBodegaActiveWorkers = computed(() => {
   return workers.size
 })
 
+// Group bodega stock by product name
+const bodegaByProduct = computed(() => {
+  const grouped = {}
+
+  currentBodegaStock.value.forEach(entry => {
+    const productName = entry.products?.name
+    if (!productName) return
+
+    if (!grouped[productName]) {
+      grouped[productName] = {
+        productName,
+        entries: [],
+        totalQty: 0,
+        totalValue: 0
+      }
+    }
+
+    const qty = entry.quantity || 0
+    const price = entry.price_snapshot || entry.products?.price_per_unit || 0
+    const value = qty * price
+
+    grouped[productName].entries.push({
+      workerName: entry.workers?.name || 'Unknown',
+      quantity: qty,
+      value: value
+    })
+
+    grouped[productName].totalQty += qty
+    grouped[productName].totalValue += value
+  })
+
+  // Convert to array and sort by product name
+  return Object.values(grouped).sort((a, b) => a.productName.localeCompare(b.productName))
+})
+
+// Grand total for bodega stock
+const bodegaGrandTotal = computed(() => {
+  return bodegaByProduct.value.reduce((acc, product) => {
+    acc.totalQty += product.totalQty
+    acc.totalValue += product.totalValue
+    return acc
+  }, { totalQty: 0, totalValue: 0 })
+})
+
+// Group previous bodega stock by product name
+const previousBodegaByProduct = computed(() => {
+  const grouped = {}
+
+  bodegaStock.value.forEach(entry => {
+    const productName = entry.products?.name
+    if (!productName) return
+
+    if (!grouped[productName]) {
+      grouped[productName] = {
+        productName,
+        entries: [],
+        totalQty: 0,
+        totalValue: 0
+      }
+    }
+
+    const qty = entry.quantity || 0
+    const price = entry.price_snapshot || entry.products?.price_per_unit || 0
+    const value = qty * price
+
+    grouped[productName].entries.push({
+      workerName: entry.workers?.name || 'Unknown',
+      quantity: qty,
+      value: value
+    })
+
+    grouped[productName].totalQty += qty
+    grouped[productName].totalValue += value
+  })
+
+  // Convert to array and sort by product name
+  return Object.values(grouped).sort((a, b) => a.productName.localeCompare(b.productName))
+})
+
+// Grand total for previous bodega stock
+const previousBodegaGrandTotal = computed(() => {
+  return previousBodegaByProduct.value.reduce((acc, product) => {
+    acc.totalQty += product.totalQty
+    acc.totalValue += product.totalValue
+    return acc
+  }, { totalQty: 0, totalValue: 0 })
+})
+
+// Closing balance (same as CashTracker) - Cumulative all-time topups minus all-time expenses
+const balanceRemaining = computed(() => {
+  return allTimeTopups.value - allTimeExpenses.value
+})
+
 const copyShareableLink = async () => {
   try {
     // Generate a unique ID for this report
@@ -1892,11 +2213,9 @@ const subconTotal = computed(() => {
 // Keep the existing totalGross computed property
 const totalGross = computed(() => {
   // Calculate total gross from payouts (matching AdminDashboard logic)
-  const baseAmount = payoutBreakdown.value.reduce((sum, payout) => {
+  return payoutBreakdown.value.reduce((sum, payout) => {
     return sum + (parseFloat(payout.gross) || 0)
   }, 0)
-  // Add +1000 offset when gross is not zero (matching net payroll logic)
-  return baseAmount > 0 ? baseAmount + 1000 : baseAmount
 })
 </script>
 

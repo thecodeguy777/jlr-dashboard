@@ -78,21 +78,35 @@
             <div class="grid grid-cols-3 gap-2 text-center">
               <div>
                 <p class="text-xs text-white/60 uppercase">Sales</p>
-                <p class="text-lg font-bold text-green-400">
+                <p class="font-bold text-green-400 break-words" :class="{
+                  'text-lg': (grossSalesTotal[salesView] || 0).toLocaleString().length <= 8,
+                  'text-base': (grossSalesTotal[salesView] || 0).toLocaleString().length > 8 && (grossSalesTotal[salesView] || 0).toLocaleString().length <= 11,
+                  'text-sm': (grossSalesTotal[salesView] || 0).toLocaleString().length > 11
+                }">
                   ₱{{ (grossSalesTotal[salesView] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
                 </p>
               </div>
               <div>
                 <p class="text-xs text-white/60 uppercase">Cost</p>
-                <p class="text-lg font-bold text-red-400">
-                  ₱{{ (grossCostTotal[salesView] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
+                <p class="font-bold text-red-400 break-words" :class="{
+                  'text-lg': (((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length <= 8),
+                  'text-base': (((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length > 8 && ((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length <= 11),
+                  'text-sm': (((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length > 11)
+                }">
+                  ₱{{ ((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
                 </p>
               </div>
               <div>
                 <p class="text-xs text-white/60 uppercase">Profit</p>
-                <p class="text-lg font-bold" :class="profitTotal[salesView] >= 0 ? 'text-green-400' : 'text-red-400'">
-                  {{ profitTotal[salesView] >= 0 ? '+' : '' }}₱{{ (profitTotal[salesView] ||
-                    0).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
+                <p class="font-bold break-words whitespace-nowrap" :class="[
+                  ((profitTotal[salesView] || 0) - computedTotalPayroll) >= 0 ? 'text-green-400' : 'text-red-400',
+                  {
+                    'text-lg': (((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length <= 7),
+                    'text-base': (((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length > 7 && ((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length <= 10),
+                    'text-sm': (((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length > 10)
+                  }
+                ]">
+                  {{ ((profitTotal[salesView] || 0) - computedTotalPayroll) >= 0 ? '+' : '' }}₱{{ ((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
                 </p>
               </div>
             </div>
@@ -106,6 +120,10 @@
               <div class="flex justify-between">
                 <span>Scrap Revenue:</span>
                 <span>₱{{ (weeklyScrapRevenue || 0).toLocaleString() }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Payroll:</span>
+                <span>₱{{ computedTotalPayroll.toLocaleString() }}</span>
               </div>
             </div>
             <p class="text-xs text-white/40 text-center">Based on deliveries & transactions this {{ viewType === 'weekly' ? 'week' : 'month' }}</p>
@@ -138,8 +156,8 @@
 
           <div class="bg-white/10 rounded-xl p-4 shadow">
             <h2 class="text-sm font-medium text-white/70">Payroll to be Paid This {{ viewType === 'weekly' ? 'Week' : 'Month' }}</h2>
-            <p class="text-3xl font-bold text-red-400 mt-2">₱{{ totalSalaries.toLocaleString() }}</p>
-            <p class="text-xs text-white/40 mt-1">Updated today</p>
+            <p class="text-3xl font-bold text-red-400 mt-2">₱{{ computedTotalPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>
+            <p class="text-xs text-white/40 mt-1">From payout breakdown below</p>
           </div>
 
 
@@ -362,7 +380,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase'
 
 const selectedSaturday = ref(new Date().toISOString().split('T')[0])
@@ -379,6 +397,14 @@ const grossSalesTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const grossCostTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const profitTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const salesView = ref('all') // 'all', 'inhouse', 'subcon'
+
+// Computed: Total payroll from breakdown
+const computedTotalPayroll = computed(() => {
+  return payoutBreakdown.value.reduce((sum, person) => {
+    const total = parseFloat(person.total) || 0
+    return sum + total
+  }, 0)
+})
 
 // CashTracker integration
 const weeklyExpenses = ref([])
@@ -833,17 +859,18 @@ async function fetchKPIs() {
         subcon: subconSales
       }
 
-      // Calculate gross costs (using cost prices)
+      // Calculate gross costs (using cost prices) + expenses
       const inhouseCosts = sumCosts(inhouse, 'inhouse')
       const subconCosts = sumCosts(subcon, 'subcon')
+      const expenses = totalWeeklyExpenses.value || 0
 
       grossCostTotal.value = {
-        all: inhouseCosts + subconCosts,
-        inhouse: inhouseCosts,
+        all: inhouseCosts + subconCosts + expenses,
+        inhouse: inhouseCosts + expenses,
         subcon: subconCosts
       }
 
-      // Calculate profit (sales - costs)
+      // Calculate profit (sales - costs which now includes expenses)
       profitTotal.value = {
         all: grossSalesTotal.value.all - grossCostTotal.value.all,
         inhouse: grossSalesTotal.value.inhouse - grossCostTotal.value.inhouse,

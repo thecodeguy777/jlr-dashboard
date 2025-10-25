@@ -82,6 +82,73 @@
             </div>
         </div>
 
+        <!-- Expense Breakdown Section -->
+        <div v-if="Object.keys(expensesByCategory).length > 0" class="bg-white/5 rounded-xl p-6 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-4">💸 {{ currentView === 'daily' ? 'Daily' : 'Monthly' }} Expense Breakdown</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div v-for="[name, category] in Object.entries(expensesByCategory)" :key="name"
+                    @click="toggleCategoryExpansion(name)"
+                    class="bg-white/5 rounded-lg p-4 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors">
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="font-medium text-white/90 flex items-center gap-2">
+                            {{ name }}
+                            <svg v-if="category.items.length > 3" :class="['w-4 h-4 text-white/50 transition-transform',
+                                expandedCategories.has(name) ? 'rotate-180' : '']" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </h4>
+                        <span class="text-red-400 font-bold">₱{{ (category.total || 0).toLocaleString() }}</span>
+                    </div>
+
+                    <div class="text-xs text-white/60 mb-3">
+                        {{ category.count }} transaction{{ category.count !== 1 ? 's' : '' }}
+                    </div>
+
+                    <!-- Individual transactions -->
+                    <div class="space-y-1" :class="expandedCategories.has(name) ? 'max-h-none' : 'max-h-24 overflow-hidden'">
+                        <div v-for="expense in (expandedCategories.has(name) ? category.items : category.items.slice(0, 3))"
+                            :key="expense.id" class="flex justify-between items-start text-xs gap-2">
+                            <div class="flex-1 min-w-0">
+                                <div class="text-white/60 truncate">{{ expense.note || 'No description' }}</div>
+                                <div class="text-white/40 text-xs mt-0.5">
+                                    {{ formatExpenseDate(expense.date) }}
+                                </div>
+                            </div>
+                            <span class="text-red-300 font-medium whitespace-nowrap">₱{{
+                                parseFloat(expense.amount).toLocaleString() }}</span>
+                        </div>
+                        <div v-if="category.items.length > 3 && !expandedCategories.has(name)"
+                            class="text-xs text-white/40 text-center hover:text-white/60 transition-colors">
+                            +{{ category.items.length - 3 }} more... (click to expand)
+                        </div>
+                        <div v-if="category.items.length > 3 && expandedCategories.has(name)"
+                            class="text-xs text-white/40 text-center hover:text-white/60 transition-colors">
+                            Click to collapse
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Summary with Balance Remaining -->
+            <div class="mt-6 pt-4 border-t border-white/10 space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-white/80 font-medium">Total {{ currentView === 'daily' ? 'Daily' : 'Monthly' }} Expenses:</span>
+                    <span class="text-2xl font-bold text-red-400">₱{{ (currentView === 'daily' ? dailyExpenses : monthlyExpenses).toLocaleString() }}</span>
+                </div>
+                <div class="flex justify-between items-center pt-3 border-t border-white/10">
+                    <span class="text-white font-semibold">Balance Remaining:</span>
+                    <span :class="[
+                        'text-2xl font-bold',
+                        balanceRemaining >= 0 ? 'text-green-400' : 'text-red-400'
+                    ]">
+                        {{ balanceRemaining >= 0 ? '+' : '' }}₱{{ balanceRemaining.toLocaleString() }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
         <!-- Transactions List -->
         <div v-if="currentView === 'daily'" class="space-y-4 pb-6">
             <template v-if="filteredDailyEntries.length > 0">
@@ -186,6 +253,7 @@ const editingEntry = ref(null)
 
 const expenses = ref([])
 const topups = ref([])
+const expandedCategories = ref(new Set())
 
 const expenseCategories = [
     'Remit Cash', 'Fuel', 'Cash Advance', 'Materials', 'Toll Fees', 'Repairs & Maintenance', 'Load / Mobile', 'Transportation', 'Utilities', 'Others'
@@ -249,6 +317,44 @@ const monthlyExpenses = computed(() => {
             return d.getFullYear() === year && (d.getMonth() + 1) === month
         })
         .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+})
+
+// Group expenses by category for breakdown
+const expensesByCategory = computed(() => {
+    let filteredExpenses = []
+
+    if (currentView.value === 'daily') {
+        filteredExpenses = expenses.value.filter(e => e.date && e.date.slice(0, 10) === selectedDate.value)
+    } else {
+        const [year, month] = selectedMonth.value.split('-').map(Number)
+        filteredExpenses = expenses.value.filter(e => {
+            if (!e.date) return false
+            const d = new Date(e.date)
+            return d.getFullYear() === year && (d.getMonth() + 1) === month
+        })
+    }
+
+    const categoryMap = {}
+    filteredExpenses.forEach(expense => {
+        const category = expense.category || 'Uncategorized'
+        if (!categoryMap[category]) {
+            categoryMap[category] = { total: 0, count: 0, items: [] }
+        }
+        categoryMap[category].total += parseFloat(expense.amount) || 0
+        categoryMap[category].count += 1
+        categoryMap[category].items.push(expense)
+    })
+
+    return categoryMap
+})
+
+// Balance remaining (income - expenses)
+const balanceRemaining = computed(() => {
+    if (currentView.value === 'daily') {
+        return dailyIncome.value - dailyExpenses.value
+    } else {
+        return monthlyIncome.value - monthlyExpenses.value
+    }
 })
 
 function switchView(view) {
@@ -431,6 +537,46 @@ function totalForDay(entries) {
     return entries
         .filter(e => e.type === 'expense')
         .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+}
+
+function toggleCategoryExpansion(categoryName) {
+    const expanded = expandedCategories.value
+    if (expanded.has(categoryName)) {
+        expanded.delete(categoryName)
+    } else {
+        expanded.add(categoryName)
+    }
+    expandedCategories.value = new Set(expanded)
+}
+
+function formatExpenseDate(dateStr) {
+    if (!dateStr) return 'Unknown date'
+
+    const date = new Date(dateStr)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    // Check if it's today
+    if (date.toDateString() === today.toDateString()) {
+        return 'Today'
+    }
+
+    // Check if it's yesterday
+    if (date.toDateString() === yesterday.toDateString()) {
+        return 'Yesterday'
+    }
+
+    // Check if it's within this week (Sunday to Saturday)
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - today.getDay())
+
+    if (date >= startOfWeek && date < today) {
+        return date.toLocaleDateString('en-US', { weekday: 'long' })
+    }
+
+    // For older dates, show month and day
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 onMounted(() => {
