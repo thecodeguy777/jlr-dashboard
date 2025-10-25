@@ -18,6 +18,16 @@
                             class="bg-transparent text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 rounded" />
                     </div>
 
+                    <div class="flex items-center gap-3 bg-gray-800 p-3 rounded-lg border border-white/10 flex-1 max-w-md">
+                        <span class="text-white/70 text-lg">🔍</span>
+                        <input type="text" v-model="searchQuery" placeholder="Search by employee name..."
+                            class="bg-transparent text-white focus:outline-none w-full placeholder-white/40" />
+                        <button v-if="searchQuery" @click="searchQuery = ''"
+                            class="text-white/40 hover:text-white transition-colors">
+                            ✕
+                        </button>
+                    </div>
+
                     <button @click="previewMode ? commitPayouts() : previewPayouts()" :disabled="loading" :class="[
                         'px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center gap-2',
                         previewMode
@@ -41,39 +51,44 @@
         <!-- Summary Section (when previews are available) -->
         <div v-if="previewMode && previews.length"
             class="bg-gray-800/50 rounded-xl p-6 border border-white/5 space-y-4">
-            <h2 class="text-lg font-semibold flex items-center gap-2">
-                <span class="text-white/70">📊</span>
-                Payroll Summary
-            </h2>
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-semibold flex items-center gap-2">
+                    <span class="text-white/70">📊</span>
+                    Payroll Summary
+                </h2>
+                <p v-if="searchQuery" class="text-sm text-white/60">
+                    Showing {{ filteredPreviews.length }} of {{ previews.length }} employees
+                </p>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="bg-gray-800/50 p-4 rounded-lg border border-white/10">
                     <p class="text-white/60 text-sm">Total Employees</p>
-                    <p class="text-2xl font-bold">{{ previews.length }}</p>
+                    <p class="text-2xl font-bold">{{ filteredPreviews.length }}</p>
                 </div>
                 <div class="bg-gray-800/50 p-4 rounded-lg border border-white/10">
                     <p class="text-white/60 text-sm">Total Net Payouts</p>
                     <p class="text-2xl font-bold text-green-400">
-                        ₱{{ totalNetPayouts.toLocaleString() }}
+                        ₱{{ filteredTotalNetPayouts.toLocaleString() }}
                     </p>
                 </div>
                 <div class="bg-gray-800/50 p-4 rounded-lg border border-white/10">
                     <p class="text-white/60 text-sm">Pending Payouts</p>
                     <p class="text-2xl font-bold text-blue-400">
-                        {{ pendingPayouts }}
+                        {{ filteredPendingPayouts }}
                     </p>
                 </div>
                 <div class="bg-gray-800/50 p-4 rounded-lg border border-white/10">
                     <p class="text-white/60 text-sm">Total Hours</p>
                     <p class="text-2xl font-bold text-purple-400">
-                        {{ totalHours }}
+                        {{ filteredTotalHours }}
                     </p>
                 </div>
             </div>
         </div>
 
         <!-- Employee Cards Grid -->
-        <div v-if="previewMode && previews.length" class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            <div v-for="p in previews" :key="p.employee_id" @click="loadPayout(p)"
+        <div v-if="previewMode && filteredPreviews.length" class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div v-for="p in filteredPreviews" :key="p.employee_id" @click="loadPayout(p)"
                 class="group bg-gray-800/50 p-6 rounded-xl shadow-lg space-y-4 cursor-pointer hover:bg-gray-800/70 transition-all duration-200 border border-white/10 hover:border-blue-400/50">
                 <!-- Employee Header -->
                 <div class="flex items-start gap-4">
@@ -222,7 +237,18 @@
             </div>
         </div>
 
-        <!-- Empty State -->
+        <!-- Empty State - No Results from Search -->
+        <div v-if="previewMode && previews.length && !filteredPreviews.length && !loading"
+            class="bg-gray-800/50 rounded-xl p-12 text-center space-y-4 border border-white/10">
+            <div class="text-4xl">🔍</div>
+            <h3 class="text-xl font-semibold">No Employees Found</h3>
+            <p class="text-white/60">No employees match your search "{{ searchQuery }}". Try a different search term.</p>
+            <button @click="searchQuery = ''" class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                Clear Search
+            </button>
+        </div>
+
+        <!-- Empty State - No Payouts -->
         <div v-if="previewMode && !previews.length && !loading"
             class="bg-gray-800/50 rounded-xl p-12 text-center space-y-4 border border-white/10">
             <div class="text-4xl">📭</div>
@@ -447,6 +473,7 @@ const selected = ref(null)
 const selectedSaturday = ref(new Date())
 const error = ref(null)
 const success = ref(null)
+const searchQuery = ref('')
 
 // Subscriptions
 let payoutsSubscription = null
@@ -457,6 +484,16 @@ let deliveriesSubscription = null
 let timesheetsSubscription = null
 
 // Computed properties
+const filteredPreviews = computed(() => {
+    if (!searchQuery.value.trim()) {
+        return previews.value
+    }
+    const query = searchQuery.value.toLowerCase().trim()
+    return previews.value.filter(p =>
+        p.name.toLowerCase().includes(query)
+    )
+})
+
 const totalNetPayouts = computed(() => {
     return previews.value.reduce((sum, p) => sum + computeNet(p), 0)
 })
@@ -467,6 +504,18 @@ const totalHours = computed(() => {
 
 const pendingPayouts = computed(() => {
     return previews.value.filter(p => !p.exists).length
+})
+
+const filteredTotalNetPayouts = computed(() => {
+    return filteredPreviews.value.reduce((sum, p) => sum + computeNet(p), 0)
+})
+
+const filteredTotalHours = computed(() => {
+    return filteredPreviews.value.reduce((sum, p) => sum + (p.hours_worked || 0), 0)
+})
+
+const filteredPendingPayouts = computed(() => {
+    return filteredPreviews.value.filter(p => !p.exists).length
 })
 
 // Helper functions

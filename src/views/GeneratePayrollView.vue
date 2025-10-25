@@ -11,6 +11,19 @@ const selectedWorker = ref(null)
 const isProcessing = ref(false)
 const isLoading = ref(false)
 const error = ref(null)
+const searchQuery = ref('')
+
+// Filtered workers based on search query
+const filteredWorkers = computed(() => {
+    if (!searchQuery.value.trim()) {
+        return workers.value
+    }
+
+    const query = searchQuery.value.toLowerCase()
+    return workers.value.filter(worker =>
+        worker.name.toLowerCase().includes(query)
+    )
+})
 
 // Calculate week range based on selected date (Sunday to Saturday)
 const weekRange = computed(() => {
@@ -953,6 +966,21 @@ async function commitWorker(worker) {
 
                     <!-- Actions -->
                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                        <!-- Search Input -->
+                        <div class="relative flex-1 max-w-xs">
+                            <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <input type="text" v-model="searchQuery" placeholder="Search workers..."
+                                class="w-full bg-gray-700 text-white pl-10 pr-10 py-2 rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            <button v-if="searchQuery" @click="searchQuery = ''"
+                                class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
                         <div class="relative">
                             <input type="date" v-model="selectedWeek"
                                 class="w-full sm:w-auto bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
@@ -1004,9 +1032,23 @@ async function commitWorker(worker) {
                 <p class="text-gray-500">There are no active workers for this period.</p>
             </div>
 
+            <!-- No Search Results -->
+            <div v-else-if="filteredWorkers.length === 0" class="text-center py-12">
+                <svg class="w-16 h-16 text-gray-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <h3 class="text-lg font-medium text-gray-400 mb-2">No Workers Found</h3>
+                <p class="text-gray-500">No workers match your search for "{{ searchQuery }}"</p>
+                <button @click="searchQuery = ''"
+                    class="mt-4 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 rounded-lg transition-colors duration-200">
+                    Clear Search
+                </button>
+            </div>
+
             <!-- Workers Grid -->
             <div v-else class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6">
-                <div v-for="worker in workers" :key="worker.id"
+                <div v-for="worker in filteredWorkers" :key="worker.id"
                     class="group bg-gray-800 rounded-xl overflow-hidden hover:ring-2 hover:ring-blue-500/50 transition-all duration-200">
                     <!-- Worker Header -->
                     <div class="p-6 border-b border-gray-700">
