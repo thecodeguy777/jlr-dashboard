@@ -6,7 +6,16 @@ export const useUserStore = defineStore('user', {
     user: null,
     role: null,
     isAccountModalOpen: false,
+    viewingAsUser: null, // For "View As" feature
   }),
+  getters: {
+    // Return the effective user ID (viewing as user or actual user)
+    effectiveUserId: (state) => state.viewingAsUser?.id || state.user?.id,
+    // Check if currently viewing as another user
+    isViewingAsOther: (state) => !!state.viewingAsUser,
+    // Check if user is admin
+    isAdmin: (state) => state.role === 'admin' || state.role === 'employee_admin',
+  },
   actions: {
     setUser(user) {
       this.user = user
@@ -85,6 +94,14 @@ export const useUserStore = defineStore('user', {
     },
     closeAccountModal() {
       this.isAccountModalOpen = false
+    },
+
+    // View As functionality
+    setViewingAs(user) {
+      this.viewingAsUser = user
+    },
+    clearViewingAs() {
+      this.viewingAsUser = null
     },
   }
 })

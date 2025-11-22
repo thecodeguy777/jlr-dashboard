@@ -133,6 +133,10 @@
                   <span>Payroll:</span>
                   <span>₱{{ computedTotalPayroll.toLocaleString() }}</span>
                 </div>
+                <div class="flex justify-between">
+                  <span>Raw Materials:</span>
+                  <span>₱{{ rawMaterialsExpenses.toLocaleString() }}</span>
+                </div>
               </div>
 
             </div>
@@ -422,8 +426,8 @@
           </div>
         </details>
       </div>
-      <!-- Weekly Expense Breakdown -->
-      <div v-if="Object.keys(expensesByCategory).length > 0"
+      <!-- Operational Expense Breakdown -->
+      <div v-if="Object.keys(operationalByCategory).length > 0"
         class="bg-gradient-to-br from-orange-900/20 to-red-900/20 backdrop-blur-sm rounded-2xl p-6 mb-8 border border-orange-500/30">
         <div class="flex items-center gap-3 mb-6">
           <div class="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center">
@@ -434,13 +438,13 @@
             </svg>
           </div>
           <div>
-            <h3 class="text-xl font-bold text-white">💸 Weekly Expense Breakdown</h3>
-            <p class="text-orange-300 text-sm">Detailed breakdown of expenses by category</p>
+            <h3 class="text-xl font-bold text-white">💸 Operational Expense Breakdown</h3>
+            <p class="text-orange-300 text-sm">Operational expenses by category</p>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div v-for="[name, category] in Object.entries(expensesByCategory)" :key="name"
+          <div v-for="[name, category] in Object.entries(operationalByCategory)" :key="name"
             @click="toggleCategoryExpansion(name)"
             class="bg-white/5 rounded-lg p-4 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors">
             <div class="flex justify-between items-center mb-2">
@@ -484,11 +488,11 @@
           </div>
         </div>
 
-        <!-- Total Summary with Balance Remaining -->
+        <!-- Total Summary -->
         <div class="mt-6 pt-4 border-t border-white/10 space-y-3">
           <div class="flex justify-between items-center">
             <div class="space-y-1">
-              <span class="text-white/80 font-medium">Total Weekly Expenses</span>
+              <span class="text-white/80 font-medium">Total Operational Expenses</span>
               <p class="text-xs" :class="{
                 'text-green-400': expensesPercentChange < 0,
                 'text-orange-400': expensesPercentChange > 0,
@@ -502,7 +506,7 @@
                 }}</span>
               </p>
             </div>
-            <span class="text-2xl font-bold text-orange-400">₱{{ (totalWeeklyExpenses || 0).toLocaleString() }}</span>
+            <span class="text-2xl font-bold text-orange-400">₱{{ operationalExpenses.toLocaleString() }}</span>
           </div>
           <div class="flex justify-between items-center pt-3 border-t border-orange-500/30">
             <span class="text-white font-semibold">Balance Remaining:</span>
@@ -513,6 +517,74 @@
               {{ balanceRemaining >= 0 ? '+' : '' }}₱{{ balanceRemaining.toLocaleString() }}
             </span>
           </div>
+        </div>
+      </div>
+
+      <!-- Raw Materials Breakdown -->
+      <div v-if="Object.keys(rawMaterialsByCategory).length > 0"
+        class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 backdrop-blur-sm rounded-2xl p-6 mb-8 border border-blue-500/30">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+            <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold text-white">🏗️ Raw Materials Breakdown</h3>
+            <p class="text-blue-300 text-sm">Materials purchased separately from operational expenses</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div v-for="[name, category] in Object.entries(rawMaterialsByCategory)" :key="name"
+            @click="toggleCategoryExpansion(name)"
+            class="bg-white/5 rounded-lg p-4 border border-blue-500/20 cursor-pointer hover:bg-white/10 transition-colors">
+            <div class="flex justify-between items-center mb-2">
+              <h4 class="font-medium text-white/90 flex items-center gap-2">
+                {{ name }}
+                <svg v-if="category.items.length > 3" :class="['w-4 h-4 text-white/50 transition-transform',
+                  expandedCategories.has(name) ? 'rotate-180' : '']" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </h4>
+              <span class="text-blue-400 font-bold">₱{{ (category.total || 0).toLocaleString() }}</span>
+            </div>
+
+            <div class="text-xs text-white/60 mb-3">
+              {{ category.count }} transaction{{ category.count !== 1 ? 's' : '' }}
+            </div>
+
+            <!-- Individual transactions -->
+            <div class="space-y-1" :class="expandedCategories.has(name) ? 'max-h-none' : 'max-h-24 overflow-hidden'">
+              <div v-for="expense in (expandedCategories.has(name) ? category.items : category.items.slice(0, 3))"
+                :key="expense.id" class="flex justify-between items-start text-xs gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="text-white/60 truncate">{{ expense.note || 'No description' }}</div>
+                  <div class="text-white/40 text-xs mt-0.5">
+                    {{ formatExpenseDate(expense.date) }}
+                  </div>
+                </div>
+                <span class="text-blue-300 font-medium whitespace-nowrap">₱{{
+                  parseFloat(expense.amount).toLocaleString() }}</span>
+              </div>
+              <div v-if="category.items.length > 3 && !expandedCategories.has(name)"
+                class="text-xs text-white/40 text-center hover:text-white/60 transition-colors">
+                +{{ category.items.length - 3 }} more... (click to expand)
+              </div>
+              <div v-if="category.items.length > 3 && expandedCategories.has(name)"
+                class="text-xs text-white/40 text-center hover:text-white/60 transition-colors">
+                Click to collapse
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Total Summary -->
+        <div class="mt-6 pt-4 border-t border-blue-500/20 flex justify-between items-center">
+          <span class="text-white/80 font-medium">Total Raw Materials:</span>
+          <span class="text-2xl font-bold text-blue-400">₱{{ rawMaterialsExpenses.toLocaleString() }}</span>
         </div>
       </div>
 
@@ -1622,6 +1694,51 @@ const expandedCategories = ref(new Set())
 const totalWeeklyTopups = ref(0) // All topups (for closing balance calculation)
 const allTimeTopups = ref(0) // Cumulative topups from all time
 const allTimeExpenses = ref(0) // Cumulative expenses from all time
+
+// Computed: Separate operational and raw materials expenses
+const operationalExpenses = computed(() => {
+  return weeklyExpenses.value
+    .filter(e => e.category !== 'Raw Materials')
+    .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
+})
+
+const rawMaterialsExpenses = computed(() => {
+  return weeklyExpenses.value
+    .filter(e => e.category === 'Raw Materials')
+    .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
+})
+
+const operationalByCategory = computed(() => {
+  const categoryMap = {}
+  weeklyExpenses.value
+    .filter(e => e.category !== 'Raw Materials')
+    .forEach(expense => {
+      const category = expense.category || 'Uncategorized'
+      if (!categoryMap[category]) {
+        categoryMap[category] = { total: 0, count: 0, items: [] }
+      }
+      categoryMap[category].total += parseFloat(expense.amount) || 0
+      categoryMap[category].count += 1
+      categoryMap[category].items.push(expense)
+    })
+  return categoryMap
+})
+
+const rawMaterialsByCategory = computed(() => {
+  const categoryMap = {}
+  weeklyExpenses.value
+    .filter(e => e.category === 'Raw Materials')
+    .forEach(expense => {
+      const category = expense.category || 'Uncategorized'
+      if (!categoryMap[category]) {
+        categoryMap[category] = { total: 0, count: 0, items: [] }
+      }
+      categoryMap[category].total += parseFloat(expense.amount) || 0
+      categoryMap[category].count += 1
+      categoryMap[category].items.push(expense)
+    })
+  return categoryMap
+})
 
 // Function to toggle category expansion
 function toggleCategoryExpansion(categoryName) {

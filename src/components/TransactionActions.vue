@@ -101,6 +101,7 @@ const props = defineProps({
     transaction: Object,
     expenseCategories: Array,
     topupCategories: Array,
+    currentDate: String, // Currently selected date from parent
     onSave: Function,
     onDelete: Function
 })
@@ -116,7 +117,7 @@ const defaultForm = () => ({
     amount: 0,
     category: '',
     note: '',
-    date: new Date().toISOString().split('T')[0],
+    date: props.currentDate || new Date().toISOString().split('T')[0],
     type: 'expense',
     withReceipt: false
 })
