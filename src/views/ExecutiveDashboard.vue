@@ -146,7 +146,7 @@
           <div class="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 pt-3 md:pt-4 border-t border-white/20 items-center">
             <div class="text-center">
               <p class="text-purple-100/80 text-xs font-medium">In-House</p>
-              <p class="text-white font-bold text-sm md:text-lg">₱{{ Math.round(totalPayroll).toLocaleString() }}</p>
+              <p class="text-white font-bold text-sm md:text-lg">₱{{ Math.round(inHouseRevenue).toLocaleString() }}</p>
             </div>
             <div class="text-center">
               <p class="text-purple-100/80 text-xs font-medium">Subcontractors</p>
@@ -679,17 +679,23 @@
       <!-- Subcon Breakdown -->
       <div
         class="bg-gradient-to-br from-orange-900/20 to-red-900/20 backdrop-blur-sm rounded-2xl p-6 border border-orange-500/30">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
-            <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
-              </path>
-            </svg>
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                </path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">Subcontractor Breakdown</h3>
+              <p class="text-orange-300 text-sm">Individual subcontractor performance</p>
+            </div>
           </div>
-          <div>
-            <h3 class="text-lg font-bold text-white">Subcontractor Breakdown</h3>
-            <p class="text-orange-300 text-sm">Individual subcontractor performance</p>
+          <div class="text-right flex-shrink-0">
+            <p class="text-xs text-white/60">Total</p>
+            <p class="text-2xl font-bold text-orange-400">₱{{ Math.round(subcontractorBreakdown.reduce((sum, s) => sum + s.totalValue, 0)).toLocaleString() }}</p>
           </div>
         </div>
 
@@ -739,17 +745,17 @@
       <div class="grid gap-6 md:grid-cols-2">
         <!-- Previous Bodega Stock Summary -->
         <div
-          class="bg-gradient-to-br from-teal-900/20 to-cyan-900/20 backdrop-blur-sm rounded-2xl p-6 border border-teal-500/30">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-10 h-10 rounded-full bg-teal-500/20 flex items-center justify-center">
-            <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          class="bg-gradient-to-br from-teal-900/20 to-cyan-900/20 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-teal-500/30">
+        <div class="flex items-start gap-2 sm:gap-3 mb-4">
+          <div class="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 rounded-full bg-teal-500/20 flex items-center justify-center">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
             </svg>
           </div>
-          <div>
-            <h3 class="text-lg font-bold text-white">Previous Bodega Stock Summary</h3>
-            <p class="text-teal-300 text-sm">Previous week inventory levels by category</p>
+          <div class="min-w-0 flex-1">
+            <h3 class="text-sm sm:text-base md:text-lg font-bold text-white leading-tight">Previous Week Stock</h3>
+            <p class="text-teal-300 text-xs leading-tight mt-0.5">Inventory levels</p>
           </div>
         </div>
 
@@ -822,17 +828,17 @@
 
         <!-- Current Bodega Stock Summary -->
         <div
-          class="bg-gradient-to-br from-emerald-900/20 to-green-900/20 backdrop-blur-sm rounded-2xl p-6 border border-emerald-500/30">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          class="bg-gradient-to-br from-emerald-900/20 to-green-900/20 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-emerald-500/30">
+        <div class="flex items-start gap-2 sm:gap-3 mb-4">
+          <div class="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 rounded-full bg-emerald-500/20 flex items-center justify-center">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
             </svg>
           </div>
-          <div>
-            <h3 class="text-lg font-bold text-white">Current Bodega Stock Summary</h3>
-            <p class="text-emerald-300 text-sm">Fetching data from: {{ new Date(currentBodegaStockDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) }}</p>
+          <div class="min-w-0 flex-1">
+            <h3 class="text-sm sm:text-base md:text-lg font-bold text-white leading-tight">Current Stock</h3>
+            <p class="text-emerald-300 text-xs leading-tight mt-0.5">{{ new Date(currentBodegaStockDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }}</p>
           </div>
         </div>
 
