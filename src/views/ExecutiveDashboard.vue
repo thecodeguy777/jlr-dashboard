@@ -532,48 +532,45 @@
           </div>
           <div>
             <h3 class="text-xl font-bold text-white">🏗️ Raw Materials Breakdown</h3>
-            <p class="text-blue-300 text-sm">Materials purchased separately from operational expenses</p>
+            <p class="text-blue-300 text-sm">Grouped by supplier/material description</p>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div v-for="[name, category] in Object.entries(rawMaterialsByCategory)" :key="name"
-            @click="toggleCategoryExpansion(name)"
+          <div v-for="[description, group] in Object.entries(rawMaterialsByCategory)" :key="description"
+            @click="toggleCategoryExpansion(description)"
             class="bg-white/5 rounded-lg p-4 border border-blue-500/20 cursor-pointer hover:bg-white/10 transition-colors">
             <div class="flex justify-between items-center mb-2">
               <h4 class="font-medium text-white/90 flex items-center gap-2">
-                {{ name }}
-                <svg v-if="category.items.length > 3" :class="['w-4 h-4 text-white/50 transition-transform',
-                  expandedCategories.has(name) ? 'rotate-180' : '']" fill="none" stroke="currentColor"
+                {{ description }}
+                <svg v-if="group.items.length > 1" :class="['w-4 h-4 text-white/50 transition-transform',
+                  expandedCategories.has(description) ? 'rotate-180' : '']" fill="none" stroke="currentColor"
                   viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
               </h4>
-              <span class="text-blue-400 font-bold">₱{{ (category.total || 0).toLocaleString() }}</span>
+              <span class="text-blue-400 font-bold">₱{{ (group.total || 0).toLocaleString() }}</span>
             </div>
 
             <div class="text-xs text-white/60 mb-3">
-              {{ category.count }} transaction{{ category.count !== 1 ? 's' : '' }}
+              {{ group.count }} purchase{{ group.count !== 1 ? 's' : '' }}
             </div>
 
-            <!-- Individual transactions -->
-            <div class="space-y-1" :class="expandedCategories.has(name) ? 'max-h-none' : 'max-h-24 overflow-hidden'">
-              <div v-for="expense in (expandedCategories.has(name) ? category.items : category.items.slice(0, 3))"
-                :key="expense.id" class="flex justify-between items-start text-xs gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="text-white/60 truncate">{{ expense.note || 'No description' }}</div>
-                  <div class="text-white/40 text-xs mt-0.5">
-                    {{ formatExpenseDate(expense.date) }}
-                  </div>
+            <!-- Individual purchases with dates -->
+            <div class="space-y-1" :class="expandedCategories.has(description) ? 'max-h-none' : 'max-h-24 overflow-hidden'">
+              <div v-for="expense in (expandedCategories.has(description) ? group.items : group.items.slice(0, 3))"
+                :key="expense.id" class="flex justify-between items-center text-xs gap-2 bg-white/5 rounded px-2 py-1">
+                <div class="flex-1">
+                  <div class="text-white/40">{{ formatExpenseDate(expense.date) }}</div>
                 </div>
                 <span class="text-blue-300 font-medium whitespace-nowrap">₱{{
                   parseFloat(expense.amount).toLocaleString() }}</span>
               </div>
-              <div v-if="category.items.length > 3 && !expandedCategories.has(name)"
+              <div v-if="group.items.length > 3 && !expandedCategories.has(description)"
                 class="text-xs text-white/40 text-center hover:text-white/60 transition-colors">
-                +{{ category.items.length - 3 }} more... (click to expand)
+                +{{ group.items.length - 3 }} more... (click to expand)
               </div>
-              <div v-if="category.items.length > 3 && expandedCategories.has(name)"
+              <div v-if="group.items.length > 3 && expandedCategories.has(description)"
                 class="text-xs text-white/40 text-center hover:text-white/60 transition-colors">
                 Click to collapse
               </div>
@@ -1725,19 +1722,19 @@ const operationalByCategory = computed(() => {
 })
 
 const rawMaterialsByCategory = computed(() => {
-  const categoryMap = {}
+  const descriptionMap = {}
   weeklyExpenses.value
     .filter(e => e.category === 'Raw Materials')
     .forEach(expense => {
-      const category = expense.category || 'Uncategorized'
-      if (!categoryMap[category]) {
-        categoryMap[category] = { total: 0, count: 0, items: [] }
+      const description = expense.note || 'No description'
+      if (!descriptionMap[description]) {
+        descriptionMap[description] = { total: 0, count: 0, items: [] }
       }
-      categoryMap[category].total += parseFloat(expense.amount) || 0
-      categoryMap[category].count += 1
-      categoryMap[category].items.push(expense)
+      descriptionMap[description].total += parseFloat(expense.amount) || 0
+      descriptionMap[description].count += 1
+      descriptionMap[description].items.push(expense)
     })
-  return categoryMap
+  return descriptionMap
 })
 
 // Function to toggle category expansion

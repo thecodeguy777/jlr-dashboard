@@ -52,10 +52,28 @@
 
 
 
-                        <!-- Note -->
-                        <div>
-                            <textarea v-model="localForm.note" placeholder="Write note"
-                                class="bg-gray-800 text-white w-full p-3 rounded" rows="3"></textarea>
+                        <!-- Note with Autocomplete -->
+                        <div class="relative">
+                            <textarea
+                                v-model="localForm.note"
+                                @input="handleNoteInput"
+                                @focus="showSuggestions = true"
+                                @blur="hideSuggestions"
+                                placeholder="Write note (e.g., Estong, Everest)"
+                                class="bg-gray-800 text-white w-full p-3 rounded"
+                                rows="3">
+                            </textarea>
+
+                            <!-- Suggestions Dropdown -->
+                            <div v-if="showSuggestions && filteredSuggestions.length > 0"
+                                 class="absolute z-10 w-full mt-1 bg-gray-800 border border-white/20 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                <div v-for="suggestion in filteredSuggestions"
+                                     :key="suggestion"
+                                     @mousedown.prevent="selectSuggestion(suggestion)"
+                                     class="px-4 py-2 hover:bg-white/10 cursor-pointer text-white/80 hover:text-white transition-colors text-sm">
+                                    {{ suggestion }}
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Date Picker -->
@@ -93,7 +111,8 @@
     </transition>
 </template>
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { supabase } from '@/lib/supabase'
 
 // Props from parent
 const props = defineProps({
@@ -125,6 +144,20 @@ const defaultForm = () => ({
 // Reactive local form
 const localForm = ref(defaultForm())
 
+// Autocomplete suggestions
+const allSuggestions = ref([])
+const showSuggestions = ref(false)
+const filteredSuggestions = computed(() => {
+    if (!localForm.value.note || localForm.value.note.length < 1) {
+        return allSuggestions.value.slice(0, 10) // Show top 10 when empty
+    }
+
+    const searchTerm = localForm.value.note.toLowerCase()
+    return allSuggestions.value
+        .filter(s => s.toLowerCase().includes(searchTerm))
+        .slice(0, 10) // Limit to 10 suggestions
+})
+
 // Watch for incoming transaction prop to preload form
 watch(
     () => props.transaction,
@@ -150,6 +183,55 @@ function toSnakeCasePayload() {
     }
 }
 
+// Fetch unique notes from database for autocomplete
+async function fetchNoteSuggestions() {
+    try {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('note')
+            .not('note', 'is', null)
+            .not('note', 'eq', '')
+
+        if (error) {
+            console.error('[TransactionActions] Error fetching suggestions:', error)
+            return
+        }
+
+        // Get unique notes and sort by frequency
+        const noteCounts = {}
+        data.forEach(t => {
+            const note = t.note.trim()
+            if (note) {
+                noteCounts[note] = (noteCounts[note] || 0) + 1
+            }
+        })
+
+        // Sort by frequency (most used first)
+        allSuggestions.value = Object.keys(noteCounts)
+            .sort((a, b) => noteCounts[b] - noteCounts[a])
+
+    } catch (err) {
+        console.error('[TransactionActions] Unexpected error:', err)
+    }
+}
+
+// Autocomplete handlers
+function handleNoteInput() {
+    showSuggestions.value = true
+}
+
+function selectSuggestion(suggestion) {
+    localForm.value.note = suggestion
+    showSuggestions.value = false
+}
+
+function hideSuggestions() {
+    // Delay to allow click event to fire
+    setTimeout(() => {
+        showSuggestions.value = false
+    }, 200)
+}
+
 // Event handlers
 function handleSave() {
     emit('save', toSnakeCasePayload())
@@ -164,4 +246,9 @@ function handleDelete() {
 function close() {
     emit('update:modelValue', false)
 }
+
+// Fetch suggestions on mount
+onMounted(() => {
+    fetchNoteSuggestions()
+})
 </script>
