@@ -27,6 +27,7 @@ import MyPayroll from '@/views/MyPayroll.vue'
 import CompanyLoans from '@/views/CompanyLoans.vue'
 import SavingsSummary from '@/views/SavingsSummary.vue'
 import CompanySavings from '@/views/CompanySavings.vue'
+import EmployeeSavingsTable from '@/views/EmployeeSavingsTable.vue'
 import SummaryTab from '../views/SummaryTab.vue'
 import Settings from '../views/Settings.vue'
 import PayrollEditor from '@/components/PayrollEditor.vue'
@@ -155,6 +156,11 @@ const routes = [
   {
     path: '/company-savings',
     component: CompanySavings,
+    meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
+  },
+  {
+    path: '/savings-table',
+    component: EmployeeSavingsTable,
     meta: { requiresAuth: true, roles: ['admin', 'employee_admin'] }
   },
   // 🔐 Shared/utility routes

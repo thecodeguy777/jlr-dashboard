@@ -368,9 +368,9 @@ const pettyCashBalance = computed(() => {
 })
 
 const dailyCarryOver = computed(() => {
-    const day = new Date(selectedDate.value)
-    const prevTopups = topups.value.filter(t => t.date && new Date(t.date) < day)
-    const prevExpenses = expenses.value.filter(t => t.date && new Date(t.date) < day && t.category !== 'Raw Materials')
+    const selectedDay = selectedDate.value // YYYY-MM-DD string
+    const prevTopups = topups.value.filter(t => t.date && t.date.slice(0, 10) < selectedDay)
+    const prevExpenses = expenses.value.filter(t => t.date && t.date.slice(0, 10) < selectedDay && t.category !== 'Raw Materials')
     const prevIncome = prevTopups.reduce((sum, t) => sum + Number(t.amount || 0), 0)
     const prevOut = prevExpenses.reduce((sum, t) => sum + Number(t.amount || 0), 0)
     return prevIncome - prevOut
@@ -390,31 +390,30 @@ const dailyExpenses = computed(() =>
 
 const carryOver = computed(() => {
     const [year, month] = selectedMonth.value.split('-').map(Number)
-    const monthStart = new Date(year, month - 1, 1)
-    const prevTopups = topups.value.filter(t => t.date && new Date(t.date) < monthStart)
-    const prevExpenses = expenses.value.filter(t => t.date && new Date(t.date) < monthStart && t.category !== 'Raw Materials')
+    // Create YYYY-MM-DD string for first day of month for string comparison
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`
+    const prevTopups = topups.value.filter(t => t.date && t.date.slice(0, 10) < monthStartStr)
+    const prevExpenses = expenses.value.filter(t => t.date && t.date.slice(0, 10) < monthStartStr && t.category !== 'Raw Materials')
     const prevIncome = prevTopups.reduce((sum, t) => sum + Number(t.amount || 0), 0)
     const prevOut = prevExpenses.reduce((sum, t) => sum + Number(t.amount || 0), 0)
     return prevIncome - prevOut
 })
 
 const monthlyIncome = computed(() => {
-    const [year, month] = selectedMonth.value.split('-').map(Number)
+    const selectedYM = selectedMonth.value // 'YYYY-MM'
     const thisMonthTopups = topups.value.filter(t => {
         if (!t.date) return false
-        const d = new Date(t.date)
-        return d.getFullYear() === year && (d.getMonth() + 1) === month
+        return t.date.slice(0, 7) === selectedYM
     })
     const thisMonthIncome = thisMonthTopups.reduce((sum, t) => sum + Number(t.amount || 0), 0)
     return carryOver.value + thisMonthIncome
 })
 const monthlyExpenses = computed(() => {
-    const [year, month] = selectedMonth.value.split('-').map(Number)
+    const selectedYM = selectedMonth.value // 'YYYY-MM'
     return expenses.value
         .filter(t => {
             if (!t.date) return false
-            const d = new Date(t.date)
-            return d.getFullYear() === year && (d.getMonth() + 1) === month
+            return t.date.slice(0, 7) === selectedYM
         })
         .reduce((sum, t) => sum + Number(t.amount || 0), 0)
 })
@@ -426,11 +425,10 @@ const expensesByCategory = computed(() => {
     if (currentView.value === 'daily') {
         filteredExpenses = expenses.value.filter(e => e.date && e.date.slice(0, 10) === selectedDate.value)
     } else {
-        const [year, month] = selectedMonth.value.split('-').map(Number)
+        const selectedYM = selectedMonth.value // 'YYYY-MM'
         filteredExpenses = expenses.value.filter(e => {
             if (!e.date) return false
-            const d = new Date(e.date)
-            return d.getFullYear() === year && (d.getMonth() + 1) === month
+            return e.date.slice(0, 7) === selectedYM
         })
     }
 
@@ -471,23 +469,21 @@ const dailyRawMaterialsExpenses = computed(() =>
 )
 
 const monthlyOperationalExpenses = computed(() => {
-    const [year, month] = selectedMonth.value.split('-').map(Number)
+    const selectedYM = selectedMonth.value // 'YYYY-MM'
     return expenses.value
         .filter(t => {
             if (!t.date || t.category === 'Raw Materials') return false
-            const d = new Date(t.date)
-            return d.getFullYear() === year && (d.getMonth() + 1) === month
+            return t.date.slice(0, 7) === selectedYM
         })
         .reduce((sum, t) => sum + Number(t.amount || 0), 0)
 })
 
 const monthlyRawMaterialsExpenses = computed(() => {
-    const [year, month] = selectedMonth.value.split('-').map(Number)
+    const selectedYM = selectedMonth.value // 'YYYY-MM'
     return expenses.value
         .filter(t => {
             if (!t.date || t.category !== 'Raw Materials') return false
-            const d = new Date(t.date)
-            return d.getFullYear() === year && (d.getMonth() + 1) === month
+            return t.date.slice(0, 7) === selectedYM
         })
         .reduce((sum, t) => sum + Number(t.amount || 0), 0)
 })
@@ -499,11 +495,10 @@ const operationalByCategory = computed(() => {
     if (currentView.value === 'daily') {
         filteredExpenses = expenses.value.filter(e => e.date && e.date.slice(0, 10) === selectedDate.value && e.category !== 'Raw Materials')
     } else {
-        const [year, month] = selectedMonth.value.split('-').map(Number)
+        const selectedYM = selectedMonth.value // 'YYYY-MM'
         filteredExpenses = expenses.value.filter(e => {
             if (!e.date || e.category === 'Raw Materials') return false
-            const d = new Date(e.date)
-            return d.getFullYear() === year && (d.getMonth() + 1) === month
+            return e.date.slice(0, 7) === selectedYM
         })
     }
 
@@ -527,11 +522,10 @@ const rawMaterialsByCategory = computed(() => {
     if (currentView.value === 'daily') {
         filteredExpenses = expenses.value.filter(e => e.date && e.date.slice(0, 10) === selectedDate.value && e.category === 'Raw Materials')
     } else {
-        const [year, month] = selectedMonth.value.split('-').map(Number)
+        const selectedYM = selectedMonth.value // 'YYYY-MM'
         filteredExpenses = expenses.value.filter(e => {
             if (!e.date || e.category !== 'Raw Materials') return false
-            const d = new Date(e.date)
-            return d.getFullYear() === year && (d.getMonth() + 1) === month
+            return e.date.slice(0, 7) === selectedYM
         })
     }
 
@@ -565,11 +559,11 @@ function changeMonth(offset) {
 }
 
 const groupedMonthly = computed(() => {
-    const [year, month] = selectedMonth.value.split('-').map(Number)
+    const selectedYM = selectedMonth.value // 'YYYY-MM'
     const allEntries = [...expenses.value, ...topups.value].filter(entry => {
         if (!entry.date) return false
-        const entryDate = new Date(entry.date)
-        return entryDate.getFullYear() === year && (entryDate.getMonth() + 1) === month
+        // Use string comparison: check if date starts with selected month
+        return entry.date.slice(0, 7) === selectedYM
     })
     const grouped = {}
     allEntries.forEach(entry => {
@@ -577,11 +571,14 @@ const groupedMonthly = computed(() => {
         if (!grouped[date]) grouped[date] = []
         grouped[date].push(entry)
     })
-    return Object.entries(grouped).map(([date, entries]) => ({ date, entries }))
+    // Sort by date descending
+    return Object.entries(grouped)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, entries]) => ({ date, entries }))
 })
 
 const filteredDailyEntries = computed(() =>
-    [...expenses.value, ...topups.value].filter(e => e.date === selectedDate.value)
+    [...expenses.value, ...topups.value].filter(e => e.date && e.date.slice(0, 10) === selectedDate.value)
 )
 
 function changeDate(offset) {
@@ -600,45 +597,58 @@ async function fetchTransactions() {
         const isAdmin = userStore.role === 'admin' || userStore.role === 'employee_admin'
         const effectiveUserId = userStore.effectiveUserId
 
-        // Base query with join
-        let query = supabase
-            .from('transactions')
-            .select(`
-    *,
-    user_profiles:user_id (
-      full_name,
-      role
-    )
-  `)
-            .order('date', { ascending: false })
+        // Supabase has a server-side limit of 1000 rows per request
+        // We need to paginate to get all transactions
+        const PAGE_SIZE = 1000
+        let allData = []
+        let from = 0
+        let hasMore = true
 
-        // If viewing as a specific user OR not admin, filter by user
-        if (userStore.isViewingAsOther) {
-            // When viewing as another user, show only that user's transactions
-            query = query.eq('user_id', effectiveUserId)
-        } else if (!isAdmin && effectiveUserId) {
-            // Non-admin users see only their own transactions
-            query = query.eq('user_id', effectiveUserId)
-        }
-        // If admin and NOT viewing as someone, show all transactions (no filter)
+        while (hasMore) {
+            let query = supabase
+                .from('transactions')
+                .select(`
+                    *,
+                    user_profiles:user_id (
+                        full_name,
+                        role
+                    )
+                `)
+                .order('date', { ascending: false })
+                .range(from, from + PAGE_SIZE - 1)
 
-        const { data, error } = await query
+            // If viewing as a specific user OR not admin, filter by user
+            if (userStore.isViewingAsOther) {
+                query = query.eq('user_id', effectiveUserId)
+            } else if (!isAdmin && effectiveUserId) {
+                query = query.eq('user_id', effectiveUserId)
+            }
 
-        if (error) {
-            console.error('[fetchTransactions] Supabase error:', error)
-            return
-        }
+            const { data, error } = await query
 
-        if (!data || !Array.isArray(data)) {
-            console.warn('[fetchTransactions] No valid data returned')
-            return
+            if (error) {
+                console.error('[fetchTransactions] Supabase error:', error)
+                return
+            }
+
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                hasMore = false
+            } else {
+                allData = allData.concat(data)
+                from += PAGE_SIZE
+                // If we got less than PAGE_SIZE, we've reached the end
+                if (data.length < PAGE_SIZE) {
+                    hasMore = false
+                }
+            }
         }
 
         // Separate by type
-        expenses.value = data.filter(entry => entry.type === 'expense')
-        topups.value = data.filter(entry => entry.type === 'topup')
+        expenses.value = allData.filter(entry => entry.type === 'expense')
+        topups.value = allData.filter(entry => entry.type === 'topup')
 
         console.log('[fetchTransactions] Loaded:', {
+            total: allData.length,
             expenses: expenses.value.length,
             topups: topups.value.length,
         })
