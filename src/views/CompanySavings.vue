@@ -8,7 +8,7 @@
                     💰 Company Savings</h1>
                 <p class="text-white/60 mt-2">Manage employee savings and refund processing</p>
             </div>
-            <div class="flex gap-4">
+            <div class="flex gap-4 items-center">
                 <div class="bg-green-600/20 rounded-lg px-4 py-2 border border-green-500/30">
                     <span class="text-white/60 text-sm">Total Savings:</span>
                     <span class="text-green-400 font-bold text-lg ml-2">₱{{ totalSavings.toLocaleString() }}</span>
@@ -22,6 +22,13 @@
                     <span class="text-orange-400 font-bold text-lg ml-2">₱{{ Math.abs(totalRefunds).toLocaleString()
                     }}</span>
                 </div>
+                <button @click="downloadPDF"
+                    class="bg-purple-600/80 hover:bg-purple-600 rounded-lg px-4 py-2 border border-purple-500/30 transition-colors flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <span class="font-medium">Download PDF</span>
+                </button>
             </div>
         </div>
 
@@ -115,7 +122,13 @@
 
                     <!-- Recent Transactions -->
                     <div class="space-y-2">
-                        <h4 class="text-xs text-white/60 font-medium">Recent Transactions:</h4>
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs text-white/60 font-medium">Recent Transactions:</h4>
+                            <button @click.stop="openTransactionsModal(employee)"
+                                class="text-xs text-green-400 hover:text-green-300 transition-colors">
+                                View All
+                            </button>
+                        </div>
                         <div v-for="transaction in employee.recentTransactions.slice(0, 3)" :key="transaction.id"
                             class="flex justify-between items-center bg-white/5 rounded-lg p-2">
                             <div class="flex items-center gap-2">
@@ -137,8 +150,10 @@
                             </div>
                         </div>
                         <div v-if="employee.recentTransactions.length > 3" class="text-center">
-                            <span class="text-white/40 text-xs">+{{ employee.recentTransactions.length - 3 }} more
-                                transactions</span>
+                            <button @click.stop="openTransactionsModal(employee)"
+                                class="text-white/40 text-xs hover:text-green-400 transition-colors">
+                                +{{ employee.recentTransactions.length - 3 }} more transactions
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -298,6 +313,15 @@
                                 selectedEmployee?.totalSavings.toLocaleString() || '0' }}</p>
                         </div>
 
+                        <!-- Refund Date -->
+                        <div>
+                            <label class="block text-sm font-medium text-white/70 mb-2">Refund Date</label>
+                            <input v-model="refundForm.date" type="date"
+                                class="px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all w-full"
+                                :max="new Date().toISOString().split('T')[0]" />
+                            <p class="text-white/40 text-xs mt-2">Select the date when this refund occurred (for past refunds)</p>
+                        </div>
+
                         <!-- Refund Reason -->
                         <div>
                             <label class="block text-sm font-medium text-white/70 mb-3">Refund Reason</label>
@@ -346,6 +370,10 @@
                                     <span class="text-white/60">Reason:</span>
                                     <span class="text-white">{{ refundForm.reason || 'Not specified' }}</span>
                                 </div>
+                                <div class="flex justify-between">
+                                    <span class="text-white/60">Date:</span>
+                                    <span class="text-white">{{ new Date(refundForm.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
+                                </div>
                             </div>
                         </div>
 
@@ -389,6 +417,189 @@
                 </div>
             </div>
         </div>
+
+        <!-- All Transactions Modal -->
+        <div v-if="showTransactionsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div
+                class="bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden border border-white/10 flex flex-col">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center p-6 border-b border-white/10 shrink-0">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Transaction History</h2>
+                        <p class="text-white/60 text-sm mt-1">{{ transactionsEmployee?.name }}</p>
+                    </div>
+                    <button @click="closeTransactionsModal" class="text-white/60 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Summary Stats -->
+                <div class="grid grid-cols-3 gap-4 p-6 border-b border-white/10 shrink-0">
+                    <div class="bg-green-600/20 rounded-lg p-3 border border-green-500/30 text-center">
+                        <p class="text-green-300 text-xs font-medium mb-1">Current Balance</p>
+                        <p class="text-white text-lg font-bold">₱{{ transactionsEmployee?.totalSavings?.toLocaleString() || 0 }}</p>
+                    </div>
+                    <div class="bg-blue-600/20 rounded-lg p-3 border border-blue-500/30 text-center">
+                        <p class="text-blue-300 text-xs font-medium mb-1">Total Deposits</p>
+                        <p class="text-white text-lg font-bold">₱{{ transactionsEmployee?.totalDeposits?.toLocaleString() || 0 }}</p>
+                    </div>
+                    <div class="bg-orange-600/20 rounded-lg p-3 border border-orange-500/30 text-center">
+                        <p class="text-orange-300 text-xs font-medium mb-1">Total Refunds</p>
+                        <p class="text-white text-lg font-bold">₱{{ Math.abs(transactionsEmployee?.totalRefunds || 0).toLocaleString() }}</p>
+                    </div>
+                </div>
+
+                <!-- Transactions List -->
+                <div class="flex-1 overflow-y-auto p-6">
+                    <div class="space-y-3">
+                        <div v-for="(transaction, index) in sortedTransactions" :key="transaction.id || index"
+                            @click="openEditTransactionModal(transaction)"
+                            class="flex justify-between items-center bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group">
+                            <div class="flex items-center gap-4">
+                                <div :class="[
+                                    'w-10 h-10 rounded-full flex items-center justify-center',
+                                    transaction.amount > 0 ? 'bg-green-500/20' : 'bg-orange-500/20'
+                                ]">
+                                    <svg v-if="transaction.amount > 0" class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                    </svg>
+                                    <svg v-else class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <span :class="[
+                                        'text-lg font-bold',
+                                        transaction.amount > 0 ? 'text-green-400' : 'text-orange-400'
+                                    ]">
+                                        {{ transaction.amount > 0 ? '+' : '' }}₱{{ Math.abs(transaction.amount).toLocaleString() }}
+                                    </span>
+                                    <div class="text-white/60 text-sm">{{ getTransactionType(transaction) }}</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div class="text-right">
+                                    <div class="text-white text-sm font-medium">{{ formatFullDate(getTransactionDate(transaction)) }}</div>
+                                    <div v-if="transaction.remarks" class="text-white/40 text-xs max-w-[200px] truncate" :title="transaction.remarks">
+                                        {{ transaction.remarks }}
+                                    </div>
+                                </div>
+                                <svg class="w-4 h-4 text-white/30 group-hover:text-white/60 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div v-if="!sortedTransactions.length" class="text-center py-12">
+                            <div class="text-white/40 text-sm">No transactions found</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="flex justify-between items-center p-6 border-t border-white/10 shrink-0">
+                    <div class="text-white/60 text-sm">
+                        {{ sortedTransactions.length }} transaction{{ sortedTransactions.length !== 1 ? 's' : '' }}
+                    </div>
+                    <button @click="closeTransactionsModal"
+                        class="px-6 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors font-medium">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Transaction Modal -->
+        <div v-if="showEditTransactionModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
+            <div class="bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full border border-white/10">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center p-6 border-b border-white/10">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Edit Transaction</h2>
+                        <p class="text-white/60 text-sm mt-1">{{ transactionsEmployee?.name }}</p>
+                    </div>
+                    <button @click="closeEditTransactionModal" class="text-white/60 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Body -->
+                <div class="p-6 space-y-5">
+                    <!-- Transaction Type (Read-only) -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Transaction Type</label>
+                        <div :class="[
+                            'px-4 py-3 rounded-lg border text-sm font-medium',
+                            editForm.amount >= 0
+                                ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                                : 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                        ]">
+                            {{ editForm.amount >= 0 ? 'Deposit / Savings' : 'Refund / Withdrawal' }}
+                        </div>
+                    </div>
+
+                    <!-- Amount -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Amount</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60">₱</span>
+                            <input v-model="editForm.absoluteAmount" type="number" step="50" min="0"
+                                class="pl-8 pr-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-full"
+                                placeholder="0.00" />
+                        </div>
+                    </div>
+
+                    <!-- Date -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Date</label>
+                        <input v-model="editForm.date" type="date"
+                            class="px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-full" />
+                    </div>
+
+                    <!-- Type -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Type</label>
+                        <select v-model="editForm.type"
+                            class="px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-full">
+                            <option value="auto">Auto (Payroll)</option>
+                            <option value="manual">Manual</option>
+                            <option value="refund">Refund</option>
+                        </select>
+                    </div>
+
+                    <!-- Remarks -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Remarks</label>
+                        <textarea v-model="editForm.remarks" rows="2"
+                            class="w-full px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                            placeholder="Optional remarks..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="flex gap-3 p-6 border-t border-white/10">
+                    <button @click="deleteTransaction"
+                        class="px-4 py-3 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition-colors font-medium border border-red-500/30">
+                        Delete
+                    </button>
+                    <div class="flex-1"></div>
+                    <button @click="closeEditTransactionModal"
+                        class="px-4 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button @click="saveTransaction"
+                        class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -403,11 +614,28 @@ const showRefundModal = ref(false)
 const selectedEmployee = ref(null)
 const modalMode = ref('add') // 'add' or 'refund'
 
+// Transactions modal state
+const showTransactionsModal = ref(false)
+const transactionsEmployee = ref(null)
+
+// Edit transaction modal state
+const showEditTransactionModal = ref(false)
+const editingTransaction = ref(null)
+const editForm = ref({
+    id: null,
+    amount: 0,
+    absoluteAmount: 0,
+    date: '',
+    type: '',
+    remarks: ''
+})
+
 // Refund form
 const refundForm = ref({
     amount: '',
     reason: '',
-    notes: ''
+    notes: '',
+    date: new Date().toISOString().split('T')[0] // Default to today
 })
 
 // Refund reasons
@@ -495,10 +723,22 @@ const canAddSavings = computed(() => {
         amount >= 50 // Minimum amount
 })
 
+// Sorted transactions for modal (newest first)
+const sortedTransactions = computed(() => {
+    if (!transactionsEmployee.value?.savingsTransactions) return []
+    return [...transactionsEmployee.value.savingsTransactions]
+        .sort((a, b) => new Date(b.week_start) - new Date(a.week_start))
+})
+
 // Methods
 function formatDate(dateString) {
     const date = new Date(dateString + 'T00:00:00') // Add time to avoid timezone issues
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function formatFullDate(dateString) {
+    const date = new Date(dateString + 'T00:00:00')
+    return date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 function getTransactionDate(transaction) {
@@ -528,13 +768,128 @@ function openRefundModal(employee) {
     refundForm.value = {
         amount: '',
         reason: '',
-        notes: ''
+        notes: '',
+        date: new Date().toISOString().split('T')[0]
     }
 }
 
 function closeRefundModal() {
     showRefundModal.value = false
     selectedEmployee.value = null
+}
+
+function openTransactionsModal(employee) {
+    transactionsEmployee.value = employee
+    showTransactionsModal.value = true
+}
+
+function closeTransactionsModal() {
+    showTransactionsModal.value = false
+    transactionsEmployee.value = null
+}
+
+function openEditTransactionModal(transaction) {
+    editingTransaction.value = transaction
+    editForm.value = {
+        id: transaction.id,
+        amount: parseFloat(transaction.amount),
+        absoluteAmount: Math.abs(parseFloat(transaction.amount)),
+        date: transaction.week_start,
+        type: transaction.type,
+        remarks: transaction.remarks || ''
+    }
+    showEditTransactionModal.value = true
+}
+
+function closeEditTransactionModal() {
+    showEditTransactionModal.value = false
+    editingTransaction.value = null
+}
+
+async function saveTransaction() {
+    if (!editForm.value.id) return
+
+    try {
+        // Determine sign based on type
+        let finalAmount = parseFloat(editForm.value.absoluteAmount)
+        if (editForm.value.type === 'refund') {
+            finalAmount = -Math.abs(finalAmount)
+        } else {
+            finalAmount = Math.abs(finalAmount)
+        }
+
+        const { error } = await supabase
+            .from('savings')
+            .update({
+                amount: finalAmount,
+                week_start: editForm.value.date,
+                type: editForm.value.type,
+                remarks: editForm.value.remarks
+            })
+            .eq('id', editForm.value.id)
+
+        if (error) {
+            console.error('Error updating transaction:', error)
+            alert('Error updating transaction. Please try again.')
+            return
+        }
+
+        alert('Transaction updated successfully!')
+        closeEditTransactionModal()
+
+        // Refresh data
+        await fetchEmployeesAndSavings()
+
+        // Update the transactionsEmployee with fresh data
+        if (transactionsEmployee.value) {
+            const updated = processedEmployees.value.find(e => e.id === transactionsEmployee.value.id)
+            if (updated) {
+                transactionsEmployee.value = updated
+            }
+        }
+
+    } catch (error) {
+        console.error('Error saving transaction:', error)
+        alert('Error saving transaction. Please try again.')
+    }
+}
+
+async function deleteTransaction() {
+    if (!editForm.value.id) return
+
+    const confirmed = confirm('Are you sure you want to delete this transaction? This cannot be undone.')
+    if (!confirmed) return
+
+    try {
+        const { error } = await supabase
+            .from('savings')
+            .delete()
+            .eq('id', editForm.value.id)
+
+        if (error) {
+            console.error('Error deleting transaction:', error)
+            alert('Error deleting transaction. Please try again.')
+            return
+        }
+
+        alert('Transaction deleted successfully!')
+        closeEditTransactionModal()
+
+        // Refresh data
+        await fetchEmployeesAndSavings()
+
+        // Update the transactionsEmployee with fresh data
+        if (transactionsEmployee.value) {
+            const updated = processedEmployees.value.find(e => e.id === transactionsEmployee.value.id)
+            if (updated) {
+                transactionsEmployee.value = updated
+            }
+        }
+
+    } catch (error) {
+        console.error('Error deleting transaction:', error)
+        alert('Error deleting transaction. Please try again.')
+    }
 }
 
 async function addSavings() {
@@ -553,9 +908,9 @@ async function addSavings() {
             .eq('worker_id', selectedEmployee.value.id)
             .eq('week_start', today)
             .eq('type', 'manual')
-            .single()
+            .maybeSingle() // Use maybeSingle to avoid 406 error when no rows found
 
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
+        if (checkError) {
             console.error('Error checking existing manual entry:', checkError)
             alert('Error checking existing entries. Please try again.')
             return
@@ -626,20 +981,20 @@ async function processRefund() {
 
     try {
         const refundAmount = parseFloat(refundForm.value.amount)
-        const today = new Date().toISOString().split('T')[0]
+        const refundDate = refundForm.value.date // Use selected date instead of today
 
-        console.log('🔍 Processing refund for date:', today)
+        console.log('🔍 Processing refund for date:', refundDate)
 
-        // Check if there's already a refund entry for today
+        // Check if there's already a refund entry for this date
         const { data: existingRefund, error: checkError } = await supabase
             .from('savings')
             .select('*')
             .eq('worker_id', selectedEmployee.value.id)
-            .eq('week_start', today)
+            .eq('week_start', refundDate)
             .eq('type', 'refund')
-            .single()
+            .maybeSingle() // Use maybeSingle to avoid 406 error when no rows found
 
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
+        if (checkError) {
             console.error('Error checking existing refund:', checkError)
             alert('Error checking existing refunds. Please try again.')
             return
@@ -673,7 +1028,7 @@ async function processRefund() {
                     amount: -refundAmount, // Negative for refund
                     type: 'refund',
                     remarks: `${refundForm.value.reason}${refundForm.value.notes ? ` - ${refundForm.value.notes}` : ''}`,
-                    week_start: today
+                    week_start: refundDate
                 })
                 .select()
 
@@ -774,6 +1129,216 @@ async function fetchEmployeesAndSavings() {
         console.error('Error fetching data:', error)
     } finally {
         loading.value = false
+    }
+}
+
+// PDF Download Function
+function downloadPDF() {
+    // Get all unique months from savings data (both deposits AND refunds)
+    const allMonths = new Set()
+    processedEmployees.value.forEach(emp => {
+        emp.savingsTransactions?.forEach(t => {
+            const date = new Date(t.week_start + 'T00:00:00')
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+            allMonths.add(monthKey)
+        })
+    })
+
+    // Sort months chronologically
+    const sortedMonths = Array.from(allMonths).sort()
+
+    // Format month names for headers
+    const monthNames = sortedMonths.map(m => {
+        const [year, month] = m.split('-')
+        const date = new Date(parseInt(year), parseInt(month) - 1, 1)
+        return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    })
+
+    // Build table data
+    const monthTotals = new Array(sortedMonths.length).fill(0)
+    let grandTotal = 0
+
+    // Get employees with any savings activity (deposits or refunds), sorted by name
+    const employeesWithSavings = processedEmployees.value
+        .filter(emp => emp.totalDeposits > 0 || emp.totalRefunds < 0)
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+    const employeeRows = employeesWithSavings.map(emp => {
+        let empDepositTotal = 0
+        let empRefundTotal = 0
+
+        const monthValues = sortedMonths.map((monthKey, idx) => {
+            // Sum deposits for this month
+            const depositSum = emp.savingsTransactions
+                ?.filter(t => {
+                    if (t.amount <= 0) return false
+                    const date = new Date(t.week_start + 'T00:00:00')
+                    const tMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+                    return tMonthKey === monthKey
+                })
+                .reduce((sum, t) => sum + t.amount, 0) || 0
+
+            // Sum refunds for this month (negative amounts)
+            const refundSum = emp.savingsTransactions
+                ?.filter(t => {
+                    if (t.amount >= 0) return false
+                    const date = new Date(t.week_start + 'T00:00:00')
+                    const tMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+                    return tMonthKey === monthKey
+                })
+                .reduce((sum, t) => sum + t.amount, 0) || 0
+
+            empDepositTotal += depositSum
+            empRefundTotal += refundSum
+            monthTotals[idx] += depositSum + refundSum // Net amount
+            return { deposit: depositSum, refund: refundSum, net: depositSum + refundSum }
+        })
+
+        const empNetTotal = empDepositTotal + empRefundTotal
+        grandTotal += empNetTotal
+        return {
+            name: emp.name,
+            months: monthValues,
+            depositTotal: empDepositTotal,
+            refundTotal: empRefundTotal,
+            total: empNetTotal
+        }
+    })
+
+    const generatedDate = new Date().toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    })
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Company Savings Report</title>
+        <style>
+            @page { size: A4 landscape; margin: 0.5in; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; line-height: 1.4; color: #333; background: white; font-size: 11px; padding: 20px; }
+            @media print {
+                body { margin: 0; padding: 15px; }
+                .no-print { display: none !important; }
+            }
+            .header { text-align: center; border-bottom: 3px solid #22c55e; padding-bottom: 15px; margin-bottom: 20px; }
+            .company-name { font-size: 24px; font-weight: bold; color: #22c55e; margin-bottom: 5px; }
+            .document-title { font-size: 18px; color: #374151; font-weight: 600; }
+            .document-date { font-size: 12px; color: #6b7280; margin-top: 5px; }
+
+            .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px; }
+            .summary-box { padding: 15px; border-radius: 8px; text-align: center; }
+            .summary-box.green { background: #dcfce7; border: 1px solid #22c55e; }
+            .summary-box.blue { background: #dbeafe; border: 1px solid #3b82f6; }
+            .summary-box.orange { background: #ffedd5; border: 1px solid #f97316; }
+            .summary-label { font-size: 11px; color: #6b7280; margin-bottom: 5px; }
+            .summary-value { font-size: 20px; font-weight: bold; }
+            .summary-box.green .summary-value { color: #16a34a; }
+            .summary-box.blue .summary-value { color: #2563eb; }
+            .summary-box.orange .summary-value { color: #ea580c; }
+
+            .savings-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; }
+            .savings-table th, .savings-table td { border: 1px solid #d1d5db; padding: 8px 6px; text-align: center; vertical-align: middle; }
+            .savings-table th { background: #22c55e; color: white; font-weight: 600; font-size: 9px; }
+            .savings-table th:first-child { text-align: left; }
+            .savings-table td:first-child { text-align: left; font-weight: 600; }
+            .savings-table tr:nth-child(even) { background: #f9fafb; }
+            .savings-table tr.total-row { background: #22c55e; color: white; font-weight: bold; }
+            .savings-table tr.total-row td { border-color: #16a34a; }
+            .deposit { color: #16a34a; }
+            .refund { color: #dc2626; font-size: 9px; }
+            .cell-content { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+            .net-value { font-weight: 600; }
+
+            .footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 10px; }
+
+            .no-print { margin-top: 30px; text-align: center; }
+            .no-print button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; margin: 0 5px; }
+            .btn-print { background: #22c55e; color: white; }
+            .btn-close { background: #6b7280; color: white; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="company-name">💰 RenewCo Company Savings</div>
+            <div class="document-title">Employee Savings Report</div>
+            <div class="document-date">Generated: ${generatedDate}</div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="summary-box green">
+                <div class="summary-label">Total Savings</div>
+                <div class="summary-value">₱${totalSavings.value.toLocaleString()}</div>
+            </div>
+            <div class="summary-box blue">
+                <div class="summary-label">Total Deposits</div>
+                <div class="summary-value">₱${totalDeposits.value.toLocaleString()}</div>
+            </div>
+            <div class="summary-box orange">
+                <div class="summary-label">Total Refunds</div>
+                <div class="summary-value">₱${Math.abs(totalRefunds.value).toLocaleString()}</div>
+            </div>
+        </div>
+
+        <table class="savings-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    ${monthNames.map(m => `<th>${m}</th>`).join('')}
+                    <th>Deposits</th>
+                    <th>Refunds</th>
+                    <th>Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${employeeRows.map(emp => `
+                <tr>
+                    <td>${emp.name}</td>
+                    ${emp.months.map(v => {
+                        if (v.deposit === 0 && v.refund === 0) return '<td>-</td>'
+                        let content = ''
+                        if (v.deposit > 0) content += `<span class="deposit">+₱${v.deposit.toLocaleString()}</span>`
+                        if (v.refund < 0) content += `${v.deposit > 0 ? '<br>' : ''}<span class="refund">-₱${Math.abs(v.refund).toLocaleString()}</span>`
+                        return `<td>${content}</td>`
+                    }).join('')}
+                    <td class="deposit">₱${emp.depositTotal.toLocaleString()}</td>
+                    <td class="refund">${emp.refundTotal < 0 ? '-₱' + Math.abs(emp.refundTotal).toLocaleString() : '-'}</td>
+                    <td class="net-value">₱${emp.total.toLocaleString()}</td>
+                </tr>
+                `).join('')}
+                <tr class="total-row">
+                    <td>TOTAL</td>
+                    ${monthTotals.map(t => `<td>₱${t.toLocaleString()}</td>`).join('')}
+                    <td>₱${totalDeposits.value.toLocaleString()}</td>
+                    <td>-₱${Math.abs(totalRefunds.value).toLocaleString()}</td>
+                    <td>₱${grandTotal.toLocaleString()}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <p><strong>RenewCo</strong> | Company Savings Report | Generated: ${new Date().toLocaleString()}</p>
+        </div>
+
+        <div class="no-print">
+            <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+            <button class="btn-close" onclick="window.close()">❌ Close</button>
+        </div>
+    </body>
+    </html>
+    `
+
+    // Open in new window and trigger print
+    const newWindow = window.open('', '_blank')
+    if (newWindow) {
+        newWindow.document.write(htmlContent)
+        newWindow.document.close()
+        setTimeout(() => {
+            newWindow.focus()
+            newWindow.print()
+        }, 500)
     }
 }
 
