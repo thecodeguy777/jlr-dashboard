@@ -70,11 +70,11 @@
 
         <!-- Employee Savings Cards -->
         <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <div v-for="employee in filteredEmployees" :key="employee.id" @click="openRefundModal(employee)"
-                class="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/10 hover:border-green-500/50 transition-all cursor-pointer group hover:bg-white/15">
+            <div v-for="employee in filteredEmployees" :key="employee.id"
+                class="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/10 hover:border-green-500/50 transition-all group hover:bg-white/15">
 
                 <!-- Employee Info -->
-                <div class="flex items-center gap-3 mb-4">
+                <div class="flex items-center gap-3 mb-4 cursor-pointer" @click="openRefundModal(employee)">
                     <div
                         class="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
                         {{ employee.name.charAt(0) }}
@@ -97,8 +97,39 @@
                     </div>
                 </div>
 
-                <!-- Savings Summary -->
-                <div v-if="employee.totalSavings > 0" class="space-y-3">
+                <!-- Tab Buttons -->
+                <div v-if="employee.totalSavings > 0" class="flex gap-2 mb-4">
+                    <button @click.stop="setCardTab(employee.id, 'savings')"
+                        :class="[
+                            'flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all',
+                            getCardTab(employee.id) === 'savings'
+                                ? 'bg-green-600 text-white'
+                                : 'bg-white/10 text-white/60 hover:bg-white/20'
+                        ]">
+                        Savings
+                    </button>
+                    <button @click.stop="setCardTab(employee.id, 'interest2')"
+                        :class="[
+                            'flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all',
+                            getCardTab(employee.id) === 'interest2'
+                                ? 'bg-yellow-600 text-white'
+                                : 'bg-white/10 text-white/60 hover:bg-white/20'
+                        ]">
+                        2%
+                    </button>
+                    <button @click.stop="setCardTab(employee.id, 'interest4')"
+                        :class="[
+                            'flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-all',
+                            getCardTab(employee.id) === 'interest4'
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-white/10 text-white/60 hover:bg-white/20'
+                        ]">
+                        4%
+                    </button>
+                </div>
+
+                <!-- SAVINGS TAB -->
+                <div v-if="employee.totalSavings > 0 && getCardTab(employee.id) === 'savings'" class="space-y-3">
                     <!-- Total Balance Hero -->
                     <div
                         class="bg-gradient-to-r from-green-600/20 to-emerald-600/20 rounded-lg p-4 border border-green-500/30">
@@ -124,10 +155,20 @@
                     <div class="space-y-2">
                         <div class="flex items-center justify-between">
                             <h4 class="text-xs text-white/60 font-medium">Recent Transactions:</h4>
-                            <button @click.stop="openTransactionsModal(employee)"
-                                class="text-xs text-green-400 hover:text-green-300 transition-colors">
-                                View All
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <button @click.stop="downloadEmployeeLedger(employee)"
+                                    class="text-xs text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                                    title="Download Ledger">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    Ledger
+                                </button>
+                                <button @click.stop="openTransactionsModal(employee)"
+                                    class="text-xs text-green-400 hover:text-green-300 transition-colors">
+                                    View All
+                                </button>
+                            </div>
                         </div>
                         <div v-for="transaction in employee.recentTransactions.slice(0, 3)" :key="transaction.id"
                             class="flex justify-between items-center bg-white/5 rounded-lg p-2">
@@ -158,8 +199,112 @@
                     </div>
                 </div>
 
+                <!-- INTEREST 2% TAB -->
+                <div v-if="employee.totalSavings > 0 && getCardTab(employee.id) === 'interest2'" class="space-y-3">
+                    <!-- Interest Summary -->
+                    <div class="bg-gradient-to-r from-yellow-600/20 to-amber-600/20 rounded-lg p-4 border border-yellow-500/30">
+                        <div class="text-center">
+                            <p class="text-yellow-300 text-sm font-medium mb-1">Interest @ 2%/period (12%/yr)</p>
+                            <p class="text-white text-2xl font-bold">₱{{ calculateEmployeeInterest(employee, 0.02).totalInterest.toLocaleString() }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Bimonthly Breakdown -->
+                    <div class="space-y-2">
+                        <h4 class="text-xs text-white/60 font-medium">Bimonthly Breakdown:</h4>
+                        <div v-for="period in calculateEmployeeInterest(employee, 0.02).periods.filter(p => p.deposits > 0 || p.deducted > 0)"
+                            :key="period.name"
+                            class="bg-white/5 rounded-lg p-2 text-xs">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <span class="text-white font-medium">{{ period.name }}</span>
+                                    <span class="text-white/40 ml-2">({{ (period.rate * 100).toFixed(0) }}%)</span>
+                                </div>
+                                <div class="text-right">
+                                    <span v-if="period.deducted > 0" class="text-orange-400 line-through mr-2">₱{{ period.deposits.toLocaleString() }}</span>
+                                    <span class="text-white/60">₱{{ period.savings.toLocaleString() }}</span>
+                                    <span class="text-yellow-400 font-medium ml-2">+₱{{ period.interest.toLocaleString() }}</span>
+                                </div>
+                            </div>
+                            <div v-if="period.deducted > 0" class="text-orange-400/70 text-right mt-1">
+                                -₱{{ period.deducted.toLocaleString() }} refund deducted
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Overall Total -->
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/10">
+                        <div class="grid grid-cols-3 gap-2 text-xs text-center">
+                            <div>
+                                <p class="text-white/60">Savings</p>
+                                <p class="text-green-400 font-bold">₱{{ calculateEmployeeInterest(employee, 0.02).totalSavings.toLocaleString() }}</p>
+                            </div>
+                            <div>
+                                <p class="text-white/60">Interest</p>
+                                <p class="text-yellow-400 font-bold">₱{{ calculateEmployeeInterest(employee, 0.02).totalInterest.toLocaleString() }}</p>
+                            </div>
+                            <div>
+                                <p class="text-white/60">Total</p>
+                                <p class="text-white font-bold">₱{{ calculateEmployeeInterest(employee, 0.02).overallTotal.toLocaleString() }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INTEREST 4% TAB -->
+                <div v-if="employee.totalSavings > 0 && getCardTab(employee.id) === 'interest4'" class="space-y-3">
+                    <!-- Interest Summary -->
+                    <div class="bg-gradient-to-r from-amber-600/20 to-orange-600/20 rounded-lg p-4 border border-amber-500/30">
+                        <div class="text-center">
+                            <p class="text-amber-300 text-sm font-medium mb-1">Interest @ 4%/period (24%/yr)</p>
+                            <p class="text-white text-2xl font-bold">₱{{ calculateEmployeeInterest(employee, 0.04).totalInterest.toLocaleString() }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Bimonthly Breakdown -->
+                    <div class="space-y-2">
+                        <h4 class="text-xs text-white/60 font-medium">Bimonthly Breakdown:</h4>
+                        <div v-for="period in calculateEmployeeInterest(employee, 0.04).periods.filter(p => p.deposits > 0 || p.deducted > 0)"
+                            :key="period.name"
+                            class="bg-white/5 rounded-lg p-2 text-xs">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <span class="text-white font-medium">{{ period.name }}</span>
+                                    <span class="text-white/40 ml-2">({{ (period.rate * 100).toFixed(0) }}%)</span>
+                                </div>
+                                <div class="text-right">
+                                    <span v-if="period.deducted > 0" class="text-orange-400 line-through mr-2">₱{{ period.deposits.toLocaleString() }}</span>
+                                    <span class="text-white/60">₱{{ period.savings.toLocaleString() }}</span>
+                                    <span class="text-amber-400 font-medium ml-2">+₱{{ period.interest.toLocaleString() }}</span>
+                                </div>
+                            </div>
+                            <div v-if="period.deducted > 0" class="text-orange-400/70 text-right mt-1">
+                                -₱{{ period.deducted.toLocaleString() }} refund deducted
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Overall Total -->
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/10">
+                        <div class="grid grid-cols-3 gap-2 text-xs text-center">
+                            <div>
+                                <p class="text-white/60">Savings</p>
+                                <p class="text-green-400 font-bold">₱{{ calculateEmployeeInterest(employee, 0.04).totalSavings.toLocaleString() }}</p>
+                            </div>
+                            <div>
+                                <p class="text-white/60">Interest</p>
+                                <p class="text-amber-400 font-bold">₱{{ calculateEmployeeInterest(employee, 0.04).totalInterest.toLocaleString() }}</p>
+                            </div>
+                            <div>
+                                <p class="text-white/60">Total</p>
+                                <p class="text-white font-bold">₱{{ calculateEmployeeInterest(employee, 0.04).overallTotal.toLocaleString() }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- No Savings State -->
-                <div v-else class="text-center py-4">
+                <div v-if="employee.totalSavings === 0" class="text-center py-4">
                     <div class="text-white/40 text-sm mb-2">No savings yet</div>
                     <div class="text-green-400 text-xs group-hover:text-green-300 transition-colors">
                         Savings will appear after payroll deductions
@@ -267,6 +412,15 @@
                             <textarea v-model="refundForm.notes" rows="3"
                                 class="w-full px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all resize-none"
                                 placeholder="Optional notes about this savings addition..."></textarea>
+                        </div>
+
+                        <!-- Savings Date -->
+                        <div>
+                            <label class="block text-sm font-medium text-white/70 mb-2">Savings Date</label>
+                            <input v-model="refundForm.date" type="date"
+                                class="px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all w-full"
+                                :max="new Date().toISOString().split('T')[0]" />
+                            <p class="text-white/40 text-xs mt-2">Select the Saturday this savings is for</p>
                         </div>
 
                         <!-- Add Preview -->
@@ -638,6 +792,81 @@ const refundForm = ref({
     date: new Date().toISOString().split('T')[0] // Default to today
 })
 
+// Card tab state (tracks which tab is active per employee)
+const cardTabs = ref({}) // { [employeeId]: 'savings' | 'interest' }
+
+function getCardTab(employeeId) {
+    return cardTabs.value[employeeId] || 'savings'
+}
+
+function setCardTab(employeeId, tab) {
+    cardTabs.value[employeeId] = tab
+}
+
+// Interest calculation: configurable rate per bimonthly period held
+// Refunds are deducted from highest interest period first (Jan/Feb)
+function calculateEmployeeInterest(employee, ratePerPeriod = 0.02) {
+    const transactions = employee.savingsTransactions || []
+
+    // Group by bimonthly period (highest interest first)
+    const periods = [
+        { name: 'Jan/Feb', months: [1, 2], periodsHeld: 6, rate: ratePerPeriod * 6 },
+        { name: 'Mar/Apr', months: [3, 4], periodsHeld: 5, rate: ratePerPeriod * 5 },
+        { name: 'May/Jun', months: [5, 6], periodsHeld: 4, rate: ratePerPeriod * 4 },
+        { name: 'Jul/Aug', months: [7, 8], periodsHeld: 3, rate: ratePerPeriod * 3 },
+        { name: 'Sep/Oct', months: [9, 10], periodsHeld: 2, rate: ratePerPeriod * 2 },
+        { name: 'Nov/Dec', months: [11, 12], periodsHeld: 1, rate: ratePerPeriod * 1 }
+    ]
+
+    // Calculate deposits per period
+    const periodData = periods.map(period => {
+        const deposits = transactions
+            .filter(t => {
+                const month = new Date(t.week_start + 'T00:00:00').getMonth() + 1
+                return period.months.includes(month) && t.amount > 0
+            })
+            .reduce((sum, t) => sum + parseFloat(t.amount), 0)
+
+        return {
+            ...period,
+            deposits: deposits,
+            adjustedSavings: deposits // Will be adjusted after refunds
+        }
+    })
+
+    // Calculate total refunds (negative amounts)
+    let totalRefunds = Math.abs(transactions
+        .filter(t => t.amount < 0)
+        .reduce((sum, t) => sum + parseFloat(t.amount), 0))
+
+    // Deduct refunds from highest interest period first
+    for (let i = 0; i < periodData.length && totalRefunds > 0; i++) {
+        const deduction = Math.min(periodData[i].adjustedSavings, totalRefunds)
+        periodData[i].adjustedSavings -= deduction
+        periodData[i].deducted = deduction
+        totalRefunds -= deduction
+    }
+
+    // Calculate interest based on adjusted savings
+    const result = periodData.map(period => ({
+        ...period,
+        savings: period.adjustedSavings,
+        interest: period.adjustedSavings * period.rate
+    }))
+
+    const totalSavings = result.reduce((sum, p) => sum + p.savings, 0)
+    const totalInterest = result.reduce((sum, p) => sum + p.interest, 0)
+    const totalDeposits = result.reduce((sum, p) => sum + p.deposits, 0)
+
+    return {
+        periods: result,
+        totalSavings,
+        totalDeposits,
+        totalInterest,
+        overallTotal: totalSavings + totalInterest
+    }
+}
+
 // Refund reasons
 const refundReasons = ['Personal', 'Emergency', 'Medical', 'Family', 'Education', 'Other']
 
@@ -742,9 +971,11 @@ function formatFullDate(dateString) {
 }
 
 function getTransactionDate(transaction) {
-    // For auto transactions (payroll), use the confirmed_at date if available
-    if (transaction.type === 'auto' && transaction.payouts?.confirmed_at) {
-        return transaction.payouts.confirmed_at.split('T')[0] // Get just the date part
+    // For auto transactions (payroll), confirmed date is week_start + 7 days
+    if (transaction.type === 'auto') {
+        const date = new Date(transaction.week_start + 'T00:00:00')
+        date.setDate(date.getDate() + 7)
+        return date.toISOString().split('T')[0]
     }
     // For manual transactions and refunds, use week_start (which is the actual transaction date)
     return transaction.week_start
@@ -897,16 +1128,17 @@ async function addSavings() {
 
     try {
         const addAmount = parseFloat(refundForm.value.amount)
-        const today = new Date().toISOString().split('T')[0]
+        // Use selected date from form, fallback to today
+        const savingsDate = refundForm.value.date || new Date().toISOString().split('T')[0]
 
-        console.log('🔍 Adding savings for date:', today)
+        console.log('🔍 Adding savings for date:', savingsDate)
 
-        // Check if there's already a manual entry for today
+        // Check if there's already a manual entry for this date
         const { data: existingManual, error: checkError } = await supabase
             .from('savings')
             .select('*')
             .eq('worker_id', selectedEmployee.value.id)
-            .eq('week_start', today)
+            .eq('week_start', savingsDate)
             .eq('type', 'manual')
             .maybeSingle() // Use maybeSingle to avoid 406 error when no rows found
 
@@ -936,18 +1168,15 @@ async function addSavings() {
             error = result.error
             console.log('✅ Updated existing manual entry')
         } else {
-            // Use upsert to handle any conflicts automatically
+            // Insert new manual entry
             const result = await supabase
                 .from('savings')
-                .upsert({
+                .insert({
                     worker_id: selectedEmployee.value.id,
                     amount: addAmount,
                     type: 'manual',
                     remarks: `${refundForm.value.reason}${refundForm.value.notes ? ` - ${refundForm.value.notes}` : ''}`,
-                    week_start: today
-                }, {
-                    onConflict: ['worker_id', 'week_start'],
-                    ignoreDuplicates: false
+                    week_start: savingsDate
                 })
                 .select()
 
@@ -1320,6 +1549,218 @@ function downloadPDF() {
 
         <div class="footer">
             <p><strong>RenewCo</strong> | Company Savings Report | Generated: ${new Date().toLocaleString()}</p>
+        </div>
+
+        <div class="no-print">
+            <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+            <button class="btn-close" onclick="window.close()">❌ Close</button>
+        </div>
+    </body>
+    </html>
+    `
+
+    // Open in new window and trigger print
+    const newWindow = window.open('', '_blank')
+    if (newWindow) {
+        newWindow.document.write(htmlContent)
+        newWindow.document.close()
+        setTimeout(() => {
+            newWindow.focus()
+            newWindow.print()
+        }, 500)
+    }
+}
+
+// Individual Employee Ledger PDF Download
+function downloadEmployeeLedger(employee) {
+    // Get all transactions sorted by date (oldest first for ledger)
+    const transactions = [...(employee.savingsTransactions || [])]
+        .sort((a, b) => new Date(a.week_start) - new Date(b.week_start))
+
+    if (transactions.length === 0) {
+        alert('No transactions to generate ledger for.')
+        return
+    }
+
+    const generatedDate = new Date().toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    })
+
+    // Group transactions by month
+    const transactionsByMonth = {}
+    transactions.forEach(t => {
+        const transactionDate = getTransactionDate(t)
+        const date = new Date(transactionDate + 'T00:00:00')
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        if (!transactionsByMonth[monthKey]) {
+            transactionsByMonth[monthKey] = []
+        }
+        transactionsByMonth[monthKey].push(t)
+    })
+
+    // Sort months chronologically
+    const sortedMonths = Object.keys(transactionsByMonth).sort()
+
+    // Calculate running balance and build ledger rows grouped by month
+    let runningBalance = 0
+    let transactionIndex = 0
+    const monthlyData = sortedMonths.map(monthKey => {
+        const [year, month] = monthKey.split('-')
+        const monthName = new Date(parseInt(year), parseInt(month) - 1, 1)
+            .toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+        let monthDeposits = 0
+        let monthWithdrawals = 0
+
+        const rows = transactionsByMonth[monthKey].map(t => {
+            transactionIndex++
+            runningBalance += t.amount
+            const transactionDate = getTransactionDate(t)
+            const formattedDate = new Date(transactionDate + 'T00:00:00').toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric'
+            })
+
+            const deposit = t.amount > 0 ? t.amount : 0
+            const withdrawal = t.amount < 0 ? Math.abs(t.amount) : 0
+            monthDeposits += deposit
+            monthWithdrawals += withdrawal
+
+            return {
+                index: transactionIndex,
+                date: formattedDate,
+                type: getTransactionType(t),
+                remarks: t.remarks || '-',
+                deposit,
+                withdrawal,
+                balance: runningBalance
+            }
+        })
+
+        return {
+            monthKey,
+            monthName,
+            rows,
+            monthDeposits,
+            monthWithdrawals,
+            monthNet: monthDeposits - monthWithdrawals,
+            endingBalance: runningBalance
+        }
+    })
+
+    // Build HTML with month groups - simple format
+    const ledgerHTML = monthlyData.map(month => {
+        const transactionsHTML = month.rows.map(row => `
+            <div class="transaction-row">
+                <span class="transaction-date">${row.date}</span>
+                <span class="transaction-type">${row.type}</span>
+                <span class="${row.deposit > 0 ? 'deposit' : 'withdrawal'}">${row.deposit > 0 ? '+₱' + row.deposit.toLocaleString() : '-₱' + row.withdrawal.toLocaleString()}</span>
+            </div>
+        `).join('')
+
+        return `
+            <div class="month-group">
+                <div class="month-header">
+                    <span class="month-name">${month.monthName}</span>
+                    <span class="month-total ${month.monthNet >= 0 ? 'deposit' : 'withdrawal'}">₱${month.monthNet.toLocaleString()}</span>
+                </div>
+                <div class="transactions-list">
+                    ${transactionsHTML}
+                </div>
+            </div>
+        `
+    }).join('')
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Savings Ledger - ${employee.name}</title>
+        <style>
+            @page { size: A4 portrait; margin: 0.5in; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; line-height: 1.5; color: #333; background: white; font-size: 11px; padding: 20px; }
+            @media print {
+                body { margin: 0; padding: 15px; }
+                .no-print { display: none !important; }
+            }
+
+            .header { text-align: center; border-bottom: 3px solid #22c55e; padding-bottom: 15px; margin-bottom: 20px; }
+            .company-name { font-size: 20px; font-weight: bold; color: #22c55e; margin-bottom: 5px; }
+            .document-title { font-size: 16px; color: #374151; font-weight: 600; }
+            .employee-name { font-size: 14px; color: #6b7280; margin-top: 8px; }
+            .document-date { font-size: 10px; color: #9ca3af; margin-top: 5px; }
+
+            .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 25px; }
+            .summary-box { padding: 12px; border-radius: 8px; text-align: center; }
+            .summary-box.green { background: #dcfce7; border: 1px solid #22c55e; }
+            .summary-box.blue { background: #dbeafe; border: 1px solid #3b82f6; }
+            .summary-box.orange { background: #ffedd5; border: 1px solid #f97316; }
+            .summary-label { font-size: 10px; color: #6b7280; margin-bottom: 3px; }
+            .summary-value { font-size: 16px; font-weight: bold; }
+            .summary-box.green .summary-value { color: #16a34a; }
+            .summary-box.blue .summary-value { color: #2563eb; }
+            .summary-box.orange .summary-value { color: #ea580c; }
+
+            .ledger-content { margin-bottom: 20px; }
+            .month-group { margin-bottom: 16px; }
+            .month-header { display: flex; justify-content: space-between; align-items: center; background: #f0fdf4; border: 1px solid #22c55e; border-radius: 6px; padding: 10px 14px; margin-bottom: 6px; }
+            .month-name { font-weight: 700; font-size: 13px; color: #166534; }
+            .month-total { font-weight: 700; font-size: 14px; }
+            .transactions-list { padding-left: 20px; border-left: 2px solid #d1d5db; margin-left: 10px; }
+            .transaction-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
+            .transaction-row:last-child { border-bottom: none; }
+            .transaction-date { color: #6b7280; width: 70px; }
+            .transaction-type { color: #374151; flex: 1; margin-left: 10px; }
+            .deposit { color: #16a34a; font-weight: 600; }
+            .withdrawal { color: #dc2626; font-weight: 600; }
+
+            .grand-total { display: flex; justify-content: space-between; align-items: center; background: #22c55e; color: white; border-radius: 6px; padding: 12px 14px; margin-top: 20px; }
+            .grand-total .label { font-weight: 700; font-size: 14px; }
+            .grand-total .value { font-weight: 700; font-size: 16px; }
+
+            .footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 9px; }
+
+            .no-print { margin-top: 30px; text-align: center; }
+            .no-print button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; margin: 0 5px; }
+            .btn-print { background: #22c55e; color: white; }
+            .btn-close { background: #6b7280; color: white; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="company-name">💰 RenewCo Savings Ledger</div>
+            <div class="document-title">Transaction History</div>
+            <div class="employee-name">${employee.name}</div>
+            <div class="document-date">Generated: ${generatedDate}</div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="summary-box green">
+                <div class="summary-label">Current Balance</div>
+                <div class="summary-value">₱${employee.totalSavings.toLocaleString()}</div>
+            </div>
+            <div class="summary-box blue">
+                <div class="summary-label">Total Deposits</div>
+                <div class="summary-value">₱${employee.totalDeposits.toLocaleString()}</div>
+            </div>
+            <div class="summary-box orange">
+                <div class="summary-label">Total Withdrawals</div>
+                <div class="summary-value">₱${Math.abs(employee.totalRefunds).toLocaleString()}</div>
+            </div>
+        </div>
+
+        <div class="ledger-content">
+            ${ledgerHTML}
+        </div>
+
+        <div class="grand-total">
+            <span class="label">TOTAL BALANCE</span>
+            <span class="value">₱${employee.totalSavings.toLocaleString()}</span>
+        </div>
+
+        <div class="footer">
+            <p><strong>RenewCo</strong> | Savings Ledger for ${employee.name} | ${transactions.length} transaction${transactions.length !== 1 ? 's' : ''} | Generated: ${new Date().toLocaleString()}</p>
         </div>
 
         <div class="no-print">
