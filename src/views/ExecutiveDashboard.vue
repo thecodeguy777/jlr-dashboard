@@ -1819,26 +1819,47 @@ function totalColumn(key) {
 }
 
 // Fetch all-time transactions for cumulative closing balance (like CashTracker)
+// Uses pagination to fetch ALL transactions (Supabase has 1000 row limit per request)
 async function fetchAllTimeBalance() {
   try {
-    const { data: allTransactions, error } = await supabase
-      .from('transactions')
-      .select('*')
+    const PAGE_SIZE = 1000
+    let allTransactions = []
+    let from = 0
+    let hasMore = true
 
-    if (error) {
-      console.error('All-time balance fetch error:', error)
-      return
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .range(from, from + PAGE_SIZE - 1)
+
+      if (error) {
+        console.error('All-time balance fetch error:', error)
+        return
+      }
+
+      if (!data || data.length === 0) {
+        hasMore = false
+      } else {
+        allTransactions = allTransactions.concat(data)
+        from += PAGE_SIZE
+        if (data.length < PAGE_SIZE) {
+          hasMore = false
+        }
+      }
     }
 
-    const allTopups = allTransactions?.filter(t => t.type === 'topup') || []
-    const allExpenses = allTransactions?.filter(t => t.type === 'expense') || []
+    const allTopups = allTransactions.filter(t => t.type === 'topup')
+    // Only count operational expenses (exclude Raw Materials) to match CashTracker's pettyCashBalance
+    const allOperationalExpenses = allTransactions.filter(t => t.type === 'expense' && t.category !== 'Raw Materials')
 
     allTimeTopups.value = allTopups.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
-    allTimeExpenses.value = allExpenses.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+    allTimeExpenses.value = allOperationalExpenses.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
 
-    console.log('💰 All-time balance:', {
+    console.log('💰 All-time balance (operational only, excl. Raw Materials):', {
+      totalTransactions: allTransactions.length,
       topups: allTimeTopups.value,
-      expenses: allTimeExpenses.value,
+      operationalExpenses: allTimeExpenses.value,
       balance: allTimeTopups.value - allTimeExpenses.value
     })
   } catch (error) {
