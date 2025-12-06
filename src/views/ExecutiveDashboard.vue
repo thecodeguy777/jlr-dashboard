@@ -137,6 +137,14 @@
                   <span>Raw Materials:</span>
                   <span>₱{{ rawMaterialsExpenses.toLocaleString() }}</span>
                 </div>
+                <div class="flex justify-between">
+                  <span>Operational:</span>
+                  <span>₱{{ operationalExpenses.toLocaleString() }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Subcon Expense:</span>
+                  <span>₱{{ Math.round(subcontractorBreakdown.reduce((sum, s) => sum + s.totalValue, 0)).toLocaleString() }}</span>
+                </div>
               </div>
 
             </div>
@@ -989,11 +997,19 @@ const currentBodegaStock = ref([]) // Current week stock
 const currentBodegaStockDate = ref('') // Date being fetched for current bodega stock
 const payoutBreakdown = ref([]) // Add payoutBreakdown data
 
-// Computed: Total payroll from breakdown (matching AdminDashboard)
+/// Computed: Total payroll from breakdown (matching AdminDashboard)
 const computedTotalPayroll = computed(() => {
   return payoutBreakdown.value.reduce((sum, person) => {
     const total = parseFloat(person.total) || 0
     return sum + total
+  }, 0)
+})
+
+// Computed: Total gross payroll (before deductions - actual labor cost)
+const computedGrossPayroll = computed(() => {
+  return payoutBreakdown.value.reduce((sum, person) => {
+    const gross = parseFloat(person.gross) || 0
+    return sum + gross
   }, 0)
 })
 
@@ -1614,20 +1630,33 @@ const productSales = computed(() => {
   return inHouseSales + subconSales
 })
 
+// In-house labor cost (qty × price_per_unit) - already included in payroll
+const inhouseLaborCost = computed(() => {
+  return sumCosts(filteredInHouseDeliveries.value, 'inhouse')
+})
+
+// Payroll adjustments (net payroll minus gross payroll)
+// This is commissions + allowances - deductions (CA, savings, SSS, loans)
+const payrollAdjustments = computed(() => {
+  return computedTotalPayroll.value - computedGrossPayroll.value
+})
+
 // Total Costs (what we spend to produce) - matching AdminDashboard logic
 const totalCosts = computed(() => {
-  // Product costs (in-house production costs + subcontractor costs)
-  const inHouseCosts = sumCosts(filteredInHouseDeliveries.value, 'inhouse')
+  // Subcontractor costs
   const subconCosts = sumCosts(filteredSubconDeliveries.value, 'subcon')
+  // Net payroll (what workers actually receive)
+  const payroll = computedTotalPayroll.value
+  // Expenses (raw materials + operational)
+  const expenses = totalWeeklyExpenses.value || 0
 
-  // Add payroll and expenses to cost
-  const total = inHouseCosts + subconCosts + computedTotalPayroll.value + (totalWeeklyExpenses.value || 0)
+  // Total = payroll + subcon + expenses
+  const total = payroll + subconCosts + expenses
 
   console.log('Total Costs Breakdown:', {
-    inHouseCosts,
+    payroll,
     subconCosts,
-    payroll: computedTotalPayroll.value,
-    expenses: totalWeeklyExpenses.value,
+    expenses,
     total
   })
 

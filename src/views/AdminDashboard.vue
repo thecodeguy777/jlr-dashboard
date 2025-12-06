@@ -89,24 +89,24 @@
               <div>
                 <p class="text-xs text-white/60 uppercase">Cost</p>
                 <p class="font-bold text-red-400 break-words" :class="{
-                  'text-lg': (((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length <= 8),
-                  'text-base': (((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length > 8 && ((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length <= 11),
-                  'text-sm': (((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString().length > 11)
+                  'text-lg': (((grossCostTotal[salesView] || 0) - inhouseLaborCost + computedTotalPayroll).toLocaleString().length <= 8),
+                  'text-base': (((grossCostTotal[salesView] || 0) - inhouseLaborCost + computedTotalPayroll).toLocaleString().length > 8 && ((grossCostTotal[salesView] || 0) - inhouseLaborCost + computedTotalPayroll).toLocaleString().length <= 11),
+                  'text-sm': (((grossCostTotal[salesView] || 0) - inhouseLaborCost + computedTotalPayroll).toLocaleString().length > 11)
                 }">
-                  ₱{{ ((grossCostTotal[salesView] || 0) + computedTotalPayroll).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
+                  ₱{{ ((grossCostTotal[salesView] || 0) - inhouseLaborCost + computedTotalPayroll).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
                 </p>
               </div>
               <div>
                 <p class="text-xs text-white/60 uppercase">Profit</p>
                 <p class="font-bold break-words whitespace-nowrap" :class="[
-                  ((profitTotal[salesView] || 0) - computedTotalPayroll) >= 0 ? 'text-green-400' : 'text-red-400',
+                  ((profitTotal[salesView] || 0) + inhouseLaborCost - computedTotalPayroll) >= 0 ? 'text-green-400' : 'text-red-400',
                   {
-                    'text-lg': (((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length <= 7),
-                    'text-base': (((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length > 7 && ((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length <= 10),
-                    'text-sm': (((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString().length > 10)
+                    'text-lg': (((profitTotal[salesView] || 0) + inhouseLaborCost - computedTotalPayroll).toLocaleString().length <= 7),
+                    'text-base': (((profitTotal[salesView] || 0) + inhouseLaborCost - computedTotalPayroll).toLocaleString().length > 7 && ((profitTotal[salesView] || 0) + inhouseLaborCost - computedTotalPayroll).toLocaleString().length <= 10),
+                    'text-sm': (((profitTotal[salesView] || 0) + inhouseLaborCost - computedTotalPayroll).toLocaleString().length > 10)
                   }
                 ]">
-                  {{ ((profitTotal[salesView] || 0) - computedTotalPayroll) >= 0 ? '+' : '' }}₱{{ ((profitTotal[salesView] || 0) - computedTotalPayroll).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
+                  {{ ((profitTotal[salesView] || 0) + inhouseLaborCost - computedTotalPayroll) >= 0 ? '+' : '' }}₱{{ ((profitTotal[salesView] || 0) + inhouseLaborCost - computedTotalPayroll).toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
                 </p>
               </div>
             </div>
@@ -128,6 +128,14 @@
               <div class="flex justify-between">
                 <span>Raw Materials:</span>
                 <span>₱{{ rawMaterialsExpenses.toLocaleString() }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Operational:</span>
+                <span>₱{{ operationalExpenses.toLocaleString() }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Subcon Expense:</span>
+                <span>₱{{ (grossCostTotal.subcon || 0).toLocaleString() }}</span>
               </div>
             </div>
             <p class="text-xs text-white/40 text-center">Based on deliveries & transactions this {{ viewType === 'weekly' ? 'week' : 'month' }}</p>
@@ -244,8 +252,23 @@
             </div>
           </div>
 
+          <!-- Subcon Expense Card -->
+          <div class="bg-white/10 rounded-xl p-4 shadow space-y-2">
+            <h2 class="text-sm font-medium text-white/70">🚛 {{ viewType === 'weekly' ? 'Weekly' : 'Monthly' }} Subcon Expense</h2>
 
+            <div class="text-center">
+              <p class="text-3xl font-bold text-orange-400">
+                ₱{{ (grossCostTotal.subcon || 0).toLocaleString() }}
+              </p>
+              <p class="text-xs text-white/40 mt-1">
+                Cost paid to subcontractors
+              </p>
+            </div>
 
+            <div class="text-xs text-white/50 text-center">
+              Based on subcon deliveries
+            </div>
+          </div>
 
         </div>
 
@@ -482,13 +505,28 @@ const grossSalesTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const grossCostTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const profitTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const salesView = ref('all') // 'all', 'inhouse', 'subcon'
+const inhouseLaborCost = ref(0) // Labor cost from in-house deliveries (qty × price_per_unit)
 
-// Computed: Total payroll from breakdown
+// Computed: Total payroll from breakdown (net - what workers receive)
 const computedTotalPayroll = computed(() => {
   return payoutBreakdown.value.reduce((sum, person) => {
     const total = parseFloat(person.total) || 0
     return sum + total
   }, 0)
+})
+
+// Computed: Total gross payroll (before deductions - actual labor cost)
+const computedGrossPayroll = computed(() => {
+  return payoutBreakdown.value.reduce((sum, person) => {
+    const gross = parseFloat(person.gross) || 0
+    return sum + gross
+  }, 0)
+})
+
+// Computed: Payroll adjustments (net payroll minus gross payroll)
+// This is commissions + allowances - deductions (CA, savings, SSS, loans)
+const payrollAdjustments = computed(() => {
+  return computedTotalPayroll.value - computedGrossPayroll.value
 })
 
 // Computed: Separate operational and raw materials expenses
@@ -1001,6 +1039,9 @@ async function fetchKPIs() {
       const inhouseCosts = sumCosts(inhouse, 'inhouse')
       const subconCosts = sumCosts(subcon, 'subcon')
       const expenses = totalWeeklyExpenses.value || 0
+
+      // Store inhouse labor cost for payroll adjustment display
+      inhouseLaborCost.value = inhouseCosts
 
       grossCostTotal.value = {
         all: inhouseCosts + subconCosts + expenses,
