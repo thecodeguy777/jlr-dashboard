@@ -856,7 +856,7 @@
               <span class="text-emerald-300 text-sm font-medium">Single Walled</span>
             </div>
             <p class="text-white text-2xl font-bold">{{ currentBodegaSingleWallTotal.toLocaleString() }} pcs</p>
-            <p class="text-emerald-400 text-sm">₱{{ Math.round(currentBodegaSingleWallValue).toLocaleString() }} value</p>
+            <p class="text-emerald-400 text-sm">₱{{ Math.round(currentBodegaSingleWallSellingValue).toLocaleString() }} <span class="text-emerald-400/60">when sold</span></p>
           </div>
 
           <div class="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -864,7 +864,7 @@
               <span class="text-green-300 text-sm font-medium">Double Walled</span>
             </div>
             <p class="text-white text-2xl font-bold">{{ currentBodegaDoubleWallTotal.toLocaleString() }} pcs</p>
-            <p class="text-green-400 text-sm">₱{{ Math.round(currentBodegaDoubleWallValue).toLocaleString() }} value</p>
+            <p class="text-green-400 text-sm">₱{{ Math.round(currentBodegaDoubleWallSellingValue).toLocaleString() }} <span class="text-green-400/60">when sold</span></p>
           </div>
 
           <div class="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -872,7 +872,7 @@
               <span class="text-white/70 text-sm font-medium">Total Stock</span>
             </div>
             <p class="text-white text-2xl font-bold">{{ (currentBodegaSingleWallTotal + currentBodegaDoubleWallTotal).toLocaleString() }} pcs</p>
-            <p class="text-white/70 text-sm">₱{{ Math.round(currentBodegaTotalValue).toLocaleString() }} total value</p>
+            <p class="text-yellow-400 text-sm font-medium">₱{{ Math.round(currentBodegaTotalSellingValue).toLocaleString() }} <span class="text-yellow-400/60">when sold</span></p>
           </div>
         </div>
 
@@ -2325,6 +2325,31 @@ const currentBodegaDoubleWallValue = computed(() => {
 
 const currentBodegaTotalValue = computed(() => {
   return currentBodegaSingleWallValue.value + currentBodegaDoubleWallValue.value
+})
+
+// Selling value computed properties (using client_product_prices - actual selling price to clients)
+const currentBodegaSingleWallSellingValue = computed(() => {
+  return currentBodegaStock.value
+    .filter(entry => entry.products?.category === 'Single Walled')
+    .reduce((sum, entry) => {
+      const qty = entry.quantity || 0
+      const price = clientPriceMap.value[entry.product_id] || 0
+      return sum + (qty * price)
+    }, 0)
+})
+
+const currentBodegaDoubleWallSellingValue = computed(() => {
+  return currentBodegaStock.value
+    .filter(entry => entry.products?.category === 'Double Walled')
+    .reduce((sum, entry) => {
+      const qty = entry.quantity || 0
+      const price = clientPriceMap.value[entry.product_id] || 0
+      return sum + (qty * price)
+    }, 0)
+})
+
+const currentBodegaTotalSellingValue = computed(() => {
+  return currentBodegaSingleWallSellingValue.value + currentBodegaDoubleWallSellingValue.value
 })
 
 const currentBodegaActiveWorkers = computed(() => {

@@ -293,35 +293,49 @@ async function initializeDeductions() {
         // Calculate loan deduction if there's a balance
         if (props.worker.loan_balance > 0) {
             console.log('Worker has loan balance:', props.worker.loan_balance)
-            console.log('Fetching loan data for worker_id:', props.worker.id)  // Change from employee_id to id
-            
-            const { data: loanData, error: loanError } = await supabase
+            console.log('Fetching loan data for worker_id:', props.worker.id)
+
+            // Fetch ALL active loans for the worker (both cash and asset loans)
+            const { data: loansData, error: loanError } = await supabase
                 .from('loans')
-                .select('amount, balance')
-                .eq('worker_id', props.worker.id)  // Change from employee_id to id
+                .select('amount, balance, loan_category, weekly_deduction')
+                .eq('worker_id', props.worker.id)
                 .eq('status', 'active')
-                .order('start_date', { ascending: false })
-                .limit(1)
-                .single()
+                .gt('balance', 0)
 
             if (loanError) {
                 console.error('Error fetching loan data:', loanError)
             }
 
-            console.log('Loan data retrieved:', loanData)
+            console.log('Loans data retrieved:', loansData)
 
-            if (loanData?.amount) {
-                const suggestedLoan = Math.round(loanData.amount / 8)
-                console.log('Calculated suggested loan payment:', suggestedLoan)
-                suggestedDeductions.value.loan = suggestedLoan
-                
+            if (loansData && loansData.length > 0) {
+                let totalSuggestedLoan = 0
+
+                loansData.forEach(loan => {
+                    if (loan.loan_category === 'asset' && loan.weekly_deduction) {
+                        // Asset loan: use fixed weekly deduction
+                        totalSuggestedLoan += loan.weekly_deduction
+                        console.log(`Asset loan weekly deduction: ${loan.weekly_deduction}`)
+                    } else {
+                        // Cash loan: calculate 1/8 of original amount, capped at remaining balance
+                        const weeklyPayment = Math.round(loan.amount / 8)
+                        const cappedPayment = Math.min(weeklyPayment, loan.balance)
+                        totalSuggestedLoan += cappedPayment
+                        console.log(`Cash loan payment: ${cappedPayment} (1/8 of ${loan.amount}, balance: ${loan.balance})`)
+                    }
+                })
+
+                console.log('Total suggested loan payment:', totalSuggestedLoan)
+                suggestedDeductions.value.loan = totalSuggestedLoan
+
                 // Only set the actual deduction if there's no existing loan deduction
                 if (!payrollData.value.deductions.loan || payrollData.value.deductions.loan === 0) {
-                    payrollData.value.deductions.loan = suggestedLoan
-                    console.log('Applied suggested loan payment to payroll data:', suggestedLoan)
+                    payrollData.value.deductions.loan = totalSuggestedLoan
+                    console.log('Applied suggested loan payment to payroll data:', totalSuggestedLoan)
                 }
             } else {
-                console.log('No loan amount found in loan data')
+                console.log('No active loans with balance found')
             }
         } else {
             console.log('Worker has no loan balance')
@@ -758,35 +772,49 @@ async function fetchHistoricalDeductions() {
         // Calculate loan deduction if there's a balance
         if (props.worker.loan_balance > 0) {
             console.log('Worker has loan balance:', props.worker.loan_balance)
-            console.log('Fetching loan data for worker_id:', props.worker.id)  // Change from employee_id to id
-            
-            const { data: loanData, error: loanError } = await supabase
+            console.log('Fetching loan data for worker_id:', props.worker.id)
+
+            // Fetch ALL active loans for the worker (both cash and asset loans)
+            const { data: loansData, error: loanError } = await supabase
                 .from('loans')
-                .select('amount, balance')
-                .eq('worker_id', props.worker.id)  // Change from employee_id to id
+                .select('amount, balance, loan_category, weekly_deduction')
+                .eq('worker_id', props.worker.id)
                 .eq('status', 'active')
-                .order('start_date', { ascending: false })
-                .limit(1)
-                .single()
+                .gt('balance', 0)
 
             if (loanError) {
                 console.error('Error fetching loan data:', loanError)
             }
 
-            console.log('Loan data retrieved:', loanData)
+            console.log('Loans data retrieved:', loansData)
 
-            if (loanData?.amount) {
-                const suggestedLoan = Math.round(loanData.amount / 8)
-                console.log('Calculated suggested loan payment:', suggestedLoan)
-                suggestedDeductions.value.loan = suggestedLoan
-                
+            if (loansData && loansData.length > 0) {
+                let totalSuggestedLoan = 0
+
+                loansData.forEach(loan => {
+                    if (loan.loan_category === 'asset' && loan.weekly_deduction) {
+                        // Asset loan: use fixed weekly deduction
+                        totalSuggestedLoan += loan.weekly_deduction
+                        console.log(`Asset loan weekly deduction: ${loan.weekly_deduction}`)
+                    } else {
+                        // Cash loan: calculate 1/8 of original amount, capped at remaining balance
+                        const weeklyPayment = Math.round(loan.amount / 8)
+                        const cappedPayment = Math.min(weeklyPayment, loan.balance)
+                        totalSuggestedLoan += cappedPayment
+                        console.log(`Cash loan payment: ${cappedPayment} (1/8 of ${loan.amount}, balance: ${loan.balance})`)
+                    }
+                })
+
+                console.log('Total suggested loan payment:', totalSuggestedLoan)
+                suggestedDeductions.value.loan = totalSuggestedLoan
+
                 // Only set the actual deduction if there's no existing loan deduction
                 if (!payrollData.value.deductions.loan || payrollData.value.deductions.loan === 0) {
-                    payrollData.value.deductions.loan = suggestedLoan
-                    console.log('Applied suggested loan payment to payroll data:', suggestedLoan)
+                    payrollData.value.deductions.loan = totalSuggestedLoan
+                    console.log('Applied suggested loan payment to payroll data:', totalSuggestedLoan)
                 }
             } else {
-                console.log('No loan amount found in loan data')
+                console.log('No active loans with balance found')
             }
         } else {
             console.log('Worker has no loan balance')
@@ -1483,7 +1511,7 @@ async function fetchReturnsData() {
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                         </svg>
-                                        Auto-populated (1/8 of loan amount)
+                                        Auto-calculated weekly payment (cash: 1/8, asset: fixed deduction)
                                     </div>
                                 </div>
                             </div>

@@ -18,6 +18,37 @@
             </div>
         </div>
 
+        <!-- Loan Type Tabs -->
+        <div class="flex gap-2 mb-6">
+            <button @click="activeLoanTab = 'cash'" :class="[
+                'px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2',
+                activeLoanTab === 'cash'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+            ]">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z">
+                    </path>
+                </svg>
+                Cash Loans
+                <span class="text-xs bg-white/20 px-2 py-0.5 rounded-full">{{ cashLoanCount }}</span>
+            </button>
+            <button @click="activeLoanTab = 'asset'" :class="[
+                'px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2',
+                activeLoanTab === 'asset'
+                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+            ]">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                </svg>
+                Asset Loans
+                <span class="text-xs bg-white/20 px-2 py-0.5 rounded-full">{{ assetLoanCount }}</span>
+            </button>
+        </div>
+
         <!-- Filter Controls -->
         <div class="bg-white/5 rounded-xl p-4 mb-8">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -53,8 +84,8 @@
             </div>
         </div>
 
-        <!-- Employee Loan Cards -->
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <!-- Employee Loan Cards - Cash Loans Tab -->
+        <div v-else-if="activeLoanTab === 'cash'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <div v-for="employee in filteredEmployees" :key="employee.id" @click="openLoanModal(employee)"
                 class="bg-white/10 rounded-xl p-6 border border-white/10 hover:border-blue-500/50 transition-all cursor-pointer group hover:bg-white/15">
 
@@ -72,26 +103,25 @@
                     <div class="text-right">
                         <span :class="[
                             'text-xs px-2 py-1 rounded-full font-medium',
-                            employee.activeLoans.length > 0
+                            employee.cashLoans.length > 0
                                 ? 'bg-orange-500/20 text-orange-300'
                                 : 'bg-green-500/20 text-green-300'
                         ]">
-                            {{ employee.activeLoans.length > 0 ? `${employee.activeLoans.length} Active` : 'No Loans' }}
+                            {{ employee.cashLoans.length > 0 ? `${employee.cashLoans.length} Active` : 'No Loans' }}
                         </span>
                     </div>
                 </div>
 
-                <!-- Loan Summary -->
-                <div v-if="employee.activeLoans.length > 0" class="space-y-3">
+                <!-- Cash Loan Summary -->
+                <div v-if="employee.cashLoans.length > 0" class="space-y-3">
                     <div class="grid grid-cols-2 gap-4 text-sm">
                         <div>
                             <span class="text-white/60 block">Outstanding:</span>
-                            <span class="text-red-400 font-bold">₱{{ employee.totalOutstanding.toLocaleString()
-                                }}</span>
+                            <span class="text-red-400 font-bold">₱{{ employee.cashOutstanding.toLocaleString() }}</span>
                         </div>
                         <div>
                             <span class="text-white/60 block">Paid:</span>
-                            <span class="text-green-400 font-bold">₱{{ employee.totalPaid.toLocaleString() }}</span>
+                            <span class="text-green-400 font-bold">₱{{ employee.cashPaid.toLocaleString() }}</span>
                         </div>
                     </div>
 
@@ -99,33 +129,43 @@
                     <div class="space-y-2">
                         <div class="flex justify-between text-xs text-white/60">
                             <span>Payment Progress</span>
-                            <span>{{ Math.round(Math.max(0, employee.paymentProgress)) }}%</span>
+                            <span>{{ Math.round(Math.max(0, (employee.cashPaid / (employee.cashPaid + employee.cashOutstanding)) * 100)) || 0 }}%</span>
                         </div>
                         <div class="w-full bg-white/10 rounded-full h-2">
                             <div class="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all duration-300"
-                                :style="{ width: `${Math.max(0, employee.paymentProgress)}%` }"></div>
+                                :style="{ width: `${Math.max(0, (employee.cashPaid / (employee.cashPaid + employee.cashOutstanding)) * 100) || 0}%` }"></div>
                         </div>
                     </div>
 
-                    <!-- Active Loans List -->
+                    <!-- Active Cash Loans List -->
                     <div class="space-y-2">
-                        <h4 class="text-xs text-white/60 font-medium">Active Loans:</h4>
-                        <div v-for="loan in employee.activeLoans" :key="loan.id"
-                            class="flex justify-between items-center bg-white/5 rounded-lg p-2">
-                            <div>
-                                <span class="text-white text-sm font-medium">₱{{ loan.amount.toLocaleString() }}</span>
-                                <span class="text-white/60 text-xs ml-2">{{ loan.remarks || 'Loan' }}</span>
+                        <h4 class="text-xs text-white/60 font-medium">Active Cash Loans:</h4>
+                        <div v-for="loan in employee.cashLoans" :key="loan.id"
+                            class="flex justify-between items-center bg-white/5 rounded-lg p-2 group/loan">
+                            <div class="flex-1 min-w-0">
+                                <span class="text-white text-sm font-medium">₱{{ loan.balance.toLocaleString() }}</span>
+                                <span class="text-white/40 text-xs"> / ₱{{ loan.amount.toLocaleString() }}</span>
+                                <span class="text-white/60 text-xs ml-2 truncate">{{ loan.remarks || 'Loan' }}</span>
                             </div>
-                            <span class="text-white/60 text-xs">{{ formatDate(loan.start_date) }}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-white/60 text-xs hidden sm:inline">{{ formatDate(loan.start_date) }}</span>
+                                <button @click.stop="openEditLoanModal(loan, employee)"
+                                    class="p-1.5 rounded-lg bg-white/10 hover:bg-blue-500/30 text-white/60 hover:text-blue-300 transition-all opacity-0 group-hover/loan:opacity-100"
+                                    title="Edit loan">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- No Loans State -->
+                <!-- No Cash Loans State -->
                 <div v-else class="text-center py-4">
-                    <div class="text-white/40 text-sm mb-2">No active loans</div>
+                    <div class="text-white/40 text-sm mb-2">No active cash loans</div>
                     <div class="text-blue-400 text-xs group-hover:text-blue-300 transition-colors">
-                        Click to apply for a loan
+                        Click to apply for a cash loan
                     </div>
                 </div>
 
@@ -137,7 +177,106 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                         </svg>
-                        {{ employee.activeLoans.length > 0 ? 'Apply for new loan' : 'Apply for loan' }}
+                        {{ employee.cashLoans.length > 0 ? 'Apply for new cash loan' : 'Apply for cash loan' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Employee Loan Cards - Asset Loans Tab -->
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div v-for="employee in filteredEmployees" :key="employee.id" @click="openAssetLoanModal(employee)"
+                class="bg-white/10 rounded-xl p-6 border border-white/10 hover:border-purple-500/50 transition-all cursor-pointer group hover:bg-white/15">
+
+                <!-- Employee Info -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div
+                        class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-bold text-lg">
+                        {{ employee.name.charAt(0) }}
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-white group-hover:text-purple-300 transition-colors">{{
+                            employee.name }}</h3>
+                        <p class="text-white/60 text-sm">{{ employee.position }}</p>
+                    </div>
+                    <div class="text-right">
+                        <span :class="[
+                            'text-xs px-2 py-1 rounded-full font-medium',
+                            employee.assetLoans.length > 0
+                                ? 'bg-purple-500/20 text-purple-300'
+                                : 'bg-green-500/20 text-green-300'
+                        ]">
+                            {{ employee.assetLoans.length > 0 ? `${employee.assetLoans.length} Active` : 'No Assets' }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Asset Loan Summary -->
+                <div v-if="employee.assetLoans.length > 0" class="space-y-3">
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-white/60 block">Outstanding:</span>
+                            <span class="text-red-400 font-bold">₱{{ employee.assetOutstanding.toLocaleString() }}</span>
+                        </div>
+                        <div>
+                            <span class="text-white/60 block">Paid:</span>
+                            <span class="text-green-400 font-bold">₱{{ employee.assetPaid.toLocaleString() }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs text-white/60">
+                            <span>Payment Progress</span>
+                            <span>{{ Math.round(Math.max(0, (employee.assetPaid / (employee.assetPaid + employee.assetOutstanding)) * 100)) || 0 }}%</span>
+                        </div>
+                        <div class="w-full bg-white/10 rounded-full h-2">
+                            <div class="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
+                                :style="{ width: `${Math.max(0, (employee.assetPaid / (employee.assetPaid + employee.assetOutstanding)) * 100) || 0}%` }"></div>
+                        </div>
+                    </div>
+
+                    <!-- Active Asset Loans List -->
+                    <div class="space-y-2">
+                        <h4 class="text-xs text-white/60 font-medium">Active Asset Loans:</h4>
+                        <div v-for="loan in employee.assetLoans" :key="loan.id"
+                            class="flex justify-between items-center bg-white/5 rounded-lg p-2 group/loan">
+                            <div class="flex-1 min-w-0">
+                                <span class="text-white text-sm font-medium">₱{{ loan.balance.toLocaleString() }}</span>
+                                <span class="text-white/40 text-xs"> / ₱{{ loan.amount.toLocaleString() }}</span>
+                                <span class="text-purple-300 text-xs ml-2">{{ loan.asset_type || 'Asset' }}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-white/60 text-xs hidden sm:inline">₱{{ (loan.weekly_deduction || 0).toLocaleString() }}/wk</span>
+                                <button @click.stop="openEditLoanModal(loan, employee)"
+                                    class="p-1.5 rounded-lg bg-white/10 hover:bg-purple-500/30 text-white/60 hover:text-purple-300 transition-all opacity-0 group-hover/loan:opacity-100"
+                                    title="Edit loan">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- No Asset Loans State -->
+                <div v-else class="text-center py-4">
+                    <div class="text-white/40 text-sm mb-2">No active asset loans</div>
+                    <div class="text-purple-400 text-xs group-hover:text-purple-300 transition-colors">
+                        Click to add an asset loan
+                    </div>
+                </div>
+
+                <!-- Action Hint -->
+                <div class="mt-4 pt-3 border-t border-white/10">
+                    <div
+                        class="flex items-center justify-center text-white/60 group-hover:text-purple-400 transition-colors text-sm">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        </svg>
+                        {{ employee.assetLoans.length > 0 ? 'Add another asset loan' : 'Add asset loan' }}
                     </div>
                 </div>
             </div>
@@ -253,6 +392,232 @@
                 </div>
             </div>
         </div>
+
+        <!-- Asset Loan Modal -->
+        <div v-if="showAssetLoanModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div class="bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center p-6 border-b border-white/10">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">New Asset Loan</h2>
+                        <p class="text-white/60 text-sm mt-1">{{ selectedEmployee?.name }}</p>
+                    </div>
+                    <button @click="closeAssetLoanModal" class="text-white/60 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Body -->
+                <div class="p-6 space-y-6">
+                    <!-- Asset Type -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-3">Asset Type</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button v-for="type in assetTypes" :key="type" @click="assetLoanForm.assetType = type" :class="[
+                                'p-3 rounded-lg text-sm font-medium transition-all border',
+                                assetLoanForm.assetType === type
+                                    ? 'bg-purple-600 text-white border-purple-500'
+                                    : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:border-white/20'
+                            ]">
+                                {{ type }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Asset Description -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Asset Description</label>
+                        <input v-model="assetLoanForm.assetDescription" type="text"
+                            class="w-full px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                            placeholder="e.g., Honda Click 125i, Model 2024" />
+                    </div>
+
+                    <!-- Total Loan Amount -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Total Loan Amount</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60">₱</span>
+                            <input v-model="assetLoanForm.totalAmount" type="number" step="100" min="1000"
+                                class="pl-8 pr-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all w-full"
+                                placeholder="0.00" />
+                        </div>
+                        <p class="text-white/40 text-xs mt-2">Total amount to be paid for the asset</p>
+                    </div>
+
+                    <!-- Weekly Deduction -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Fixed Weekly Deduction</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60">₱</span>
+                            <input v-model="assetLoanForm.weeklyDeduction" type="number" step="50" min="100"
+                                class="pl-8 pr-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all w-full"
+                                placeholder="0.00" />
+                        </div>
+                        <p class="text-white/40 text-xs mt-2">Amount deducted every Saturday</p>
+                    </div>
+
+                    <!-- Additional Remarks -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Additional Remarks</label>
+                        <textarea v-model="assetLoanForm.remarks" rows="2"
+                            class="w-full px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
+                            placeholder="Any additional notes..."></textarea>
+                    </div>
+
+                    <!-- Loan Summary -->
+                    <div v-if="assetLoanForm.totalAmount && assetLoanForm.weeklyDeduction" class="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <h4 class="text-white font-medium mb-3">Asset Loan Summary</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Asset:</span>
+                                <span class="text-purple-300">{{ assetLoanForm.assetType }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Total Amount:</span>
+                                <span class="text-white">₱{{ parseFloat(assetLoanForm.totalAmount || 0).toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Weekly Deduction:</span>
+                                <span class="text-white">₱{{ parseFloat(assetLoanForm.weeklyDeduction || 0).toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Deduction Day:</span>
+                                <span class="text-white">Every Saturday</span>
+                            </div>
+                            <div class="flex justify-between border-t border-white/10 pt-2 font-medium">
+                                <span class="text-white/80">Est. Weeks to Pay:</span>
+                                <span class="text-green-400">{{ calculateWeeksToPay() }} weeks</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="flex gap-3 p-6 border-t border-white/10">
+                    <button @click="closeAssetLoanModal"
+                        class="flex-1 px-4 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button @click="submitAssetLoan" :disabled="!canSubmitAssetLoan" :class="[
+                        'flex-1 px-4 py-3 rounded-lg font-medium transition-all',
+                        canSubmitAssetLoan
+                            ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg'
+                            : 'bg-white/10 text-white/40 cursor-not-allowed'
+                    ]">
+                        Add Asset Loan
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Loan Modal -->
+        <div v-if="showEditLoanModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div class="bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center p-6 border-b border-white/10">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Edit Loan</h2>
+                        <p class="text-white/60 text-sm mt-1">{{ selectedEmployee?.name }}</p>
+                    </div>
+                    <button @click="closeEditLoanModal" class="text-white/60 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Body -->
+                <div class="p-6 space-y-6">
+                    <!-- Loan Info -->
+                    <div class="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <h4 class="text-white font-medium mb-3">Loan Details</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Type:</span>
+                                <span :class="selectedLoan?.loan_category === 'asset' ? 'text-purple-300' : 'text-blue-300'">
+                                    {{ selectedLoan?.loan_category === 'asset' ? (selectedLoan?.asset_type || 'Asset Loan') : 'Cash Loan' }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Original Amount:</span>
+                                <span class="text-white">₱{{ selectedLoan?.amount?.toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Current Balance:</span>
+                                <span class="text-red-400 font-medium">₱{{ selectedLoan?.balance?.toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Total Paid:</span>
+                                <span class="text-green-400">₱{{ ((selectedLoan?.amount || 0) - (selectedLoan?.balance || 0)).toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-white/60">Start Date:</span>
+                                <span class="text-white">{{ selectedLoan?.start_date ? formatDate(selectedLoan.start_date) : '-' }}</span>
+                            </div>
+                            <div v-if="selectedLoan?.weekly_deduction" class="flex justify-between">
+                                <span class="text-white/60">Weekly Deduction:</span>
+                                <span class="text-white">₱{{ selectedLoan?.weekly_deduction?.toLocaleString() }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Edit Balance -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Adjust Balance</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60">₱</span>
+                            <input v-model="editLoanForm.balance" type="number" step="1" min="0"
+                                class="pl-8 pr-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-full"
+                                :placeholder="selectedLoan?.balance?.toString()" />
+                        </div>
+                        <p class="text-white/40 text-xs mt-2">Set to 0 to mark as fully paid, or adjust if payment wasn't recorded properly</p>
+                    </div>
+
+                    <!-- Remarks -->
+                    <div>
+                        <label class="block text-sm font-medium text-white/70 mb-2">Remarks</label>
+                        <textarea v-model="editLoanForm.remarks" rows="2"
+                            class="w-full px-4 py-3 bg-white/10 text-white rounded-lg border border-white/20 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                            :placeholder="selectedLoan?.remarks || 'Add notes about this adjustment...'"></textarea>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="space-y-3">
+                        <h4 class="text-sm font-medium text-white/70">Quick Actions</h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button @click="editLoanForm.balance = 0"
+                                class="p-3 rounded-lg bg-green-500/20 text-green-300 border border-green-500/30 hover:bg-green-500/30 transition-all text-sm font-medium">
+                                Mark as Fully Paid
+                            </button>
+                            <button @click="editLoanForm.balance = selectedLoan?.balance"
+                                class="p-3 rounded-lg bg-white/10 text-white/70 border border-white/20 hover:bg-white/20 transition-all text-sm font-medium">
+                                Reset to Current
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="flex gap-3 p-6 border-t border-white/10">
+                    <button @click="closeEditLoanModal"
+                        class="flex-1 px-4 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button @click="updateLoan" :class="[
+                        'flex-1 px-4 py-3 rounded-lg font-medium transition-all',
+                        editLoanForm.balance !== '' && editLoanForm.balance !== selectedLoan?.balance
+                            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
+                            : 'bg-white/10 text-white/40 cursor-not-allowed'
+                    ]" :disabled="editLoanForm.balance === '' || editLoanForm.balance === selectedLoan?.balance">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -263,18 +628,38 @@ import { supabase } from '@/lib/supabase'
 // State
 const searchQuery = ref('')
 const activeFilter = ref('all')
+const activeLoanTab = ref('cash') // 'cash' or 'asset'
 const showLoanModal = ref(false)
+const showAssetLoanModal = ref(false)
+const showEditLoanModal = ref(false)
 const selectedEmployee = ref(null)
+const selectedLoan = ref(null)
 
-// Loan form
+// Edit loan form
+const editLoanForm = ref({
+    balance: '',
+    remarks: ''
+})
+
+// Loan form (cash loans)
 const loanForm = ref({
     type: 'Personal',
     amount: '',
     purpose: ''
 })
 
+// Asset loan form
+const assetLoanForm = ref({
+    assetType: 'Motorcycle',
+    assetDescription: '',
+    totalAmount: '',
+    weeklyDeduction: '',
+    remarks: ''
+})
+
 // Loan types
 const loanTypes = ['Personal', 'Emergency', 'Educational', 'Medical']
+const assetTypes = ['Motorcycle', 'Equipment', 'Vehicle', 'Other']
 
 // Real data from Supabase
 const employees = ref([])
@@ -283,13 +668,34 @@ const loading = ref(true)
 // Computed properties
 const processedEmployees = computed(() => {
     return employees.value.map(employee => {
-        const totalOutstanding = employee.activeLoans.reduce((sum, loan) => sum + (loan.balance || 0), 0)
-        const totalPaid = employee.activeLoans.reduce((sum, loan) => sum + (loan.amount - loan.balance), 0)
-        const totalLoanAmount = employee.activeLoans.reduce((sum, loan) => sum + (loan.amount || 0), 0)
+        // Separate cash and asset loans
+        const cashLoans = employee.activeLoans.filter(loan => loan.loan_category !== 'asset')
+        const assetLoans = employee.activeLoans.filter(loan => loan.loan_category === 'asset')
+
+        // Cash loan totals
+        const cashOutstanding = cashLoans.reduce((sum, loan) => sum + (loan.balance || 0), 0)
+        const cashPaid = cashLoans.reduce((sum, loan) => sum + (loan.amount - loan.balance), 0)
+        const cashTotal = cashLoans.reduce((sum, loan) => sum + (loan.amount || 0), 0)
+
+        // Asset loan totals
+        const assetOutstanding = assetLoans.reduce((sum, loan) => sum + (loan.balance || 0), 0)
+        const assetPaid = assetLoans.reduce((sum, loan) => sum + (loan.amount - loan.balance), 0)
+        const assetTotal = assetLoans.reduce((sum, loan) => sum + (loan.amount || 0), 0)
+
+        // Combined totals
+        const totalOutstanding = cashOutstanding + assetOutstanding
+        const totalPaid = cashPaid + assetPaid
+        const totalLoanAmount = cashTotal + assetTotal
         const paymentProgress = totalLoanAmount > 0 ? (totalPaid / totalLoanAmount) * 100 : 0
 
         return {
             ...employee,
+            cashLoans,
+            assetLoans,
+            cashOutstanding,
+            cashPaid,
+            assetOutstanding,
+            assetPaid,
             totalOutstanding,
             totalPaid,
             paymentProgress
@@ -297,11 +703,30 @@ const processedEmployees = computed(() => {
     })
 })
 
-const loanFilters = computed(() => [
-    { key: 'all', label: 'All Employees', count: processedEmployees.value.length },
-    { key: 'active', label: 'Active Loans', count: processedEmployees.value.filter(e => e.activeLoans.length > 0).length },
-    { key: 'no-loans', label: 'No Loans', count: processedEmployees.value.filter(e => e.activeLoans.length === 0).length }
-])
+// Loan counts for tabs
+const cashLoanCount = computed(() => {
+    return processedEmployees.value.reduce((sum, emp) => sum + emp.cashLoans.length, 0)
+})
+
+const assetLoanCount = computed(() => {
+    return processedEmployees.value.reduce((sum, emp) => sum + emp.assetLoans.length, 0)
+})
+
+const loanFilters = computed(() => {
+    if (activeLoanTab.value === 'cash') {
+        return [
+            { key: 'all', label: 'All Employees', count: processedEmployees.value.length },
+            { key: 'active', label: 'With Cash Loans', count: processedEmployees.value.filter(e => e.cashLoans.length > 0).length },
+            { key: 'no-loans', label: 'No Cash Loans', count: processedEmployees.value.filter(e => e.cashLoans.length === 0).length }
+        ]
+    } else {
+        return [
+            { key: 'all', label: 'All Employees', count: processedEmployees.value.length },
+            { key: 'active', label: 'With Asset Loans', count: processedEmployees.value.filter(e => e.assetLoans.length > 0).length },
+            { key: 'no-loans', label: 'No Asset Loans', count: processedEmployees.value.filter(e => e.assetLoans.length === 0).length }
+        ]
+    }
+})
 
 const filteredEmployees = computed(() => {
     let filtered = processedEmployees.value
@@ -313,11 +738,19 @@ const filteredEmployees = computed(() => {
         )
     }
 
-    // Apply loan status filter
-    if (activeFilter.value === 'active') {
-        filtered = filtered.filter(employee => employee.activeLoans.length > 0)
-    } else if (activeFilter.value === 'no-loans') {
-        filtered = filtered.filter(employee => employee.activeLoans.length === 0)
+    // Apply loan status filter based on active tab
+    if (activeLoanTab.value === 'cash') {
+        if (activeFilter.value === 'active') {
+            filtered = filtered.filter(employee => employee.cashLoans.length > 0)
+        } else if (activeFilter.value === 'no-loans') {
+            filtered = filtered.filter(employee => employee.cashLoans.length === 0)
+        }
+    } else {
+        if (activeFilter.value === 'active') {
+            filtered = filtered.filter(employee => employee.assetLoans.length > 0)
+        } else if (activeFilter.value === 'no-loans') {
+            filtered = filtered.filter(employee => employee.assetLoans.length === 0)
+        }
     }
 
     return filtered
@@ -337,6 +770,15 @@ const canSubmitLoan = computed(() => {
         loanForm.value.purpose &&
         parseFloat(loanForm.value.amount) >= 1000 &&
         parseFloat(loanForm.value.amount) <= 100000
+})
+
+const canSubmitAssetLoan = computed(() => {
+    return assetLoanForm.value.assetType &&
+        assetLoanForm.value.assetDescription &&
+        assetLoanForm.value.totalAmount &&
+        assetLoanForm.value.weeklyDeduction &&
+        parseFloat(assetLoanForm.value.totalAmount) >= 1000 &&
+        parseFloat(assetLoanForm.value.weeklyDeduction) >= 100
 })
 
 // Methods
@@ -359,6 +801,82 @@ function openLoanModal(employee) {
 function closeLoanModal() {
     showLoanModal.value = false
     selectedEmployee.value = null
+}
+
+function openAssetLoanModal(employee) {
+    selectedEmployee.value = employee
+    showAssetLoanModal.value = true
+    // Reset form
+    assetLoanForm.value = {
+        assetType: 'Motorcycle',
+        assetDescription: '',
+        totalAmount: '',
+        weeklyDeduction: '',
+        remarks: ''
+    }
+}
+
+function closeAssetLoanModal() {
+    showAssetLoanModal.value = false
+    selectedEmployee.value = null
+}
+
+function openEditLoanModal(loan, employee) {
+    selectedLoan.value = loan
+    selectedEmployee.value = employee
+    editLoanForm.value = {
+        balance: loan.balance,
+        remarks: loan.remarks || ''
+    }
+    showEditLoanModal.value = true
+}
+
+function closeEditLoanModal() {
+    showEditLoanModal.value = false
+    selectedLoan.value = null
+    selectedEmployee.value = null
+}
+
+async function updateLoan() {
+    if (editLoanForm.value.balance === '' || editLoanForm.value.balance === selectedLoan.value?.balance) return
+
+    try {
+        const newBalance = parseFloat(editLoanForm.value.balance)
+        const newStatus = newBalance <= 0 ? 'paid' : 'active'
+
+        // Update loan in database
+        const { error } = await supabase
+            .from('loans')
+            .update({
+                balance: Math.max(0, newBalance),
+                status: newStatus,
+                remarks: editLoanForm.value.remarks || selectedLoan.value.remarks
+            })
+            .eq('id', selectedLoan.value.id)
+
+        if (error) {
+            console.error('Error updating loan:', error)
+            alert('Error updating loan. Please try again.')
+            return
+        }
+
+        alert(newBalance <= 0 ? 'Loan marked as fully paid!' : 'Loan balance updated successfully!')
+        closeEditLoanModal()
+
+        // Refresh data to get updated totals
+        await fetchEmployeesAndLoans()
+
+    } catch (error) {
+        console.error('Error updating loan:', error)
+        alert('Error updating loan. Please try again.')
+    }
+}
+
+function calculateWeeksToPay() {
+    if (!assetLoanForm.value.totalAmount || !assetLoanForm.value.weeklyDeduction) return 0
+    const total = parseFloat(assetLoanForm.value.totalAmount)
+    const weekly = parseFloat(assetLoanForm.value.weeklyDeduction)
+    return Math.ceil(total / weekly)
 }
 
 function calculateWeeklyPayment() {
@@ -430,6 +948,66 @@ async function submitLoanApplication() {
     } catch (error) {
         console.error('Error submitting loan application:', error)
         alert('Error submitting loan application. Please try again.')
+    }
+}
+
+async function submitAssetLoan() {
+    if (!canSubmitAssetLoan.value) return
+
+    try {
+        const totalAmount = parseFloat(assetLoanForm.value.totalAmount)
+        const weeklyDeduction = parseFloat(assetLoanForm.value.weeklyDeduction)
+
+        // Build remarks with asset info
+        const remarks = `${assetLoanForm.value.assetType} - ${assetLoanForm.value.assetDescription}${assetLoanForm.value.remarks ? ' | ' + assetLoanForm.value.remarks : ''}`
+
+        // Insert new asset loan into database
+        const { data, error } = await supabase
+            .from('loans')
+            .insert({
+                worker_id: selectedEmployee.value.id,
+                amount: totalAmount,
+                balance: totalAmount,
+                status: 'active',
+                start_date: new Date().toISOString().split('T')[0],
+                remarks: remarks,
+                loan_category: 'asset',
+                asset_type: assetLoanForm.value.assetType,
+                weekly_deduction: weeklyDeduction
+            })
+            .select()
+
+        if (error) {
+            console.error('Error submitting asset loan:', error)
+            alert('Error submitting asset loan. Please try again.')
+            return
+        }
+
+        // Add to local state immediately for UI update
+        const newLoan = {
+            id: data[0].id,
+            worker_id: selectedEmployee.value.id,
+            amount: totalAmount,
+            balance: totalAmount,
+            start_date: new Date().toISOString().split('T')[0],
+            status: 'active',
+            remarks: remarks,
+            loan_category: 'asset',
+            asset_type: assetLoanForm.value.assetType,
+            weekly_deduction: weeklyDeduction
+        }
+
+        selectedEmployee.value.activeLoans.push(newLoan)
+
+        alert('Asset loan added successfully!')
+        closeAssetLoanModal()
+
+        // Refresh data to get updated totals
+        await fetchEmployeesAndLoans()
+
+    } catch (error) {
+        console.error('Error submitting asset loan:', error)
+        alert('Error submitting asset loan. Please try again.')
     }
 }
 

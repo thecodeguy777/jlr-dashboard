@@ -1002,6 +1002,122 @@ async function commitWorker(worker) {
                 </div>
             </header>
 
+            <!-- Summary Table (Desktop) -->
+            <div v-if="!isLoading && !error && workers.length > 0" class="hidden md:block bg-gray-800 rounded-xl overflow-hidden mb-6">
+                <div class="p-4 border-b border-gray-700">
+                    <h2 class="text-lg font-semibold text-white">📋 Payroll Summary</h2>
+                    <p class="text-sm text-gray-400">Quick overview - click row to edit, or commit directly</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm text-white/80 table-auto">
+                        <thead class="border-b border-white/10 bg-gray-700/50">
+                            <tr>
+                                <th class="text-left py-3 px-4">Name</th>
+                                <th class="text-right py-3 px-4">Gross</th>
+                                <th class="text-right py-3 px-4">Deductions</th>
+                                <th class="text-right py-3 px-4">Additions</th>
+                                <th class="text-right py-3 px-4">Net Pay</th>
+                                <th class="text-center py-3 px-4">Status</th>
+                                <th class="text-center py-3 px-4">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="worker in filteredWorkers" :key="'summary-' + worker.id"
+                                @click="openPayrollEditor(worker)"
+                                class="border-b border-white/5 hover:bg-white/5 cursor-pointer transition-colors">
+                                <td class="py-3 px-4 font-medium">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center text-xs font-bold">
+                                            {{ worker.avatar }}
+                                        </div>
+                                        {{ worker.name }}
+                                    </div>
+                                </td>
+                                <td class="py-3 px-4 text-right text-blue-400">₱{{ (worker.gross || 0).toLocaleString() }}</td>
+                                <td class="py-3 px-4 text-right text-red-400">-₱{{ (worker.total_deductions || 0).toLocaleString() }}</td>
+                                <td class="py-3 px-4 text-right text-green-400">+₱{{ (worker.total_additions || 0).toLocaleString() }}</td>
+                                <td class="py-3 px-4 text-right font-bold" :class="worker.net >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    ₱{{ (worker.net || 0).toLocaleString() }}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    <span v-if="worker.confirmed_at" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Committed
+                                    </span>
+                                    <span v-else class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        Pending
+                                    </span>
+                                </td>
+                                <td class="py-3 px-4 text-center" @click.stop>
+                                    <button v-if="!worker.confirmed_at" @click="commitWorker(worker)"
+                                        class="px-3 py-1 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">
+                                        Commit
+                                    </button>
+                                    <button v-else @click="openPayrollEditor(worker)"
+                                        class="px-3 py-1 text-xs font-medium bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors">
+                                        View
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="border-t border-white/10 bg-gray-700/30">
+                            <tr class="font-semibold">
+                                <td class="py-3 px-4">Total ({{ filteredWorkers.length }} workers)</td>
+                                <td class="py-3 px-4 text-right text-blue-400">₱{{ filteredWorkers.reduce((sum, w) => sum + (w.gross || 0), 0).toLocaleString() }}</td>
+                                <td class="py-3 px-4 text-right text-red-400">-₱{{ filteredWorkers.reduce((sum, w) => sum + (w.total_deductions || 0), 0).toLocaleString() }}</td>
+                                <td class="py-3 px-4 text-right text-green-400">+₱{{ filteredWorkers.reduce((sum, w) => sum + (w.total_additions || 0), 0).toLocaleString() }}</td>
+                                <td class="py-3 px-4 text-right text-white">₱{{ filteredWorkers.reduce((sum, w) => sum + (w.net || 0), 0).toLocaleString() }}</td>
+                                <td class="py-3 px-4 text-center">
+                                    <span class="text-xs text-gray-400">
+                                        {{ filteredWorkers.filter(w => w.confirmed_at).length }}/{{ filteredWorkers.length }} committed
+                                    </span>
+                                </td>
+                                <td class="py-3 px-4"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Mobile Summary Cards -->
+            <div v-if="!isLoading && !error && workers.length > 0" class="md:hidden space-y-3 mb-6">
+                <div class="bg-gray-800 rounded-xl p-4">
+                    <h2 class="text-lg font-semibold text-white mb-3">📋 Quick Summary</h2>
+                    <div class="space-y-2">
+                        <div v-for="worker in filteredWorkers" :key="'mobile-summary-' + worker.id"
+                            class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg"
+                            @click="openPayrollEditor(worker)">
+                            <div class="flex items-center gap-3">
+                                <div :class="[
+                                    'w-2 h-2 rounded-full',
+                                    worker.confirmed_at ? 'bg-green-500' : 'bg-yellow-500'
+                                ]"></div>
+                                <span class="font-medium text-white">{{ worker.name }}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="font-bold" :class="worker.net >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    ₱{{ (worker.net || 0).toLocaleString() }}
+                                </span>
+                                <button v-if="!worker.confirmed_at" @click.stop="commitWorker(worker)"
+                                    class="px-2 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition-colors">
+                                    ✓
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Mobile Total -->
+                    <div class="mt-4 pt-3 border-t border-gray-600 flex justify-between items-center">
+                        <span class="text-gray-400">Total Payroll</span>
+                        <span class="text-xl font-bold text-white">₱{{ filteredWorkers.reduce((sum, w) => sum + (w.net || 0), 0).toLocaleString() }}</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Loading State -->
             <div v-if="isLoading" class="flex flex-col items-center justify-center py-12">
                 <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
