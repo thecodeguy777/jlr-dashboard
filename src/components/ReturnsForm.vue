@@ -39,7 +39,7 @@ const formData = ref({
 // Show/hide sections based on type
 const showRepairFields = computed(() => formData.value.type === 'repair')
 const showModifyFields = computed(() => formData.value.type === 'transform')
-const showScrapFields = computed(() => formData.value.type === 'scrap')
+const showScrapFields = computed(() => formData.value.status === 'scrapped')
 
 // Computed total labor cost
 const totalLaborCost = computed(() => {
@@ -123,9 +123,14 @@ async function saveReturn() {
             }
         }
 
-        // For repair type, validate worker
-        if (formData.value.type === 'repair' && !formData.value.repair_worker_id) {
-            throw new Error('Please select a repair worker')
+        // For repair type, validate worker and product
+        if (formData.value.type === 'repair') {
+            if (!formData.value.repair_worker_id) {
+                throw new Error('Please select a repair worker')
+            }
+            if (!formData.value.source_product_id) {
+                throw new Error('Please select a product to repair')
+            }
         }
 
         const saveData = {
@@ -145,9 +150,16 @@ async function saveReturn() {
 
         // Only add IDs if they exist
         if (props.worker_id) saveData.worker_id = props.worker_id
-        if (formData.value.type === 'transform' ? formData.value.source_product_id : props.product_id) {
-            saveData.product_id = formData.value.type === 'transform' ? formData.value.source_product_id : props.product_id
+
+        // For repair and transform, use source_product_id; for return use props.product_id
+        if (formData.value.type === 'repair' || formData.value.type === 'transform') {
+            if (formData.value.source_product_id) {
+                saveData.product_id = formData.value.source_product_id
+            }
+        } else if (props.product_id) {
+            saveData.product_id = props.product_id
         }
+
         if (props.delivery_id) saveData.delivery_id = props.delivery_id
 
         console.log('Saving return:', saveData)
@@ -266,6 +278,7 @@ loadData()
                                     </div>
                                 </div>
                             </div>
+
                         </div>
 
                         <!-- Dynamic Section -->
@@ -291,7 +304,7 @@ loadData()
                                         <div class="text-xs text-gray-400 mb-1">From</div>
                                         <select v-model="formData.source_product_id"
                                             class="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-800">
-                                            <option value="">Select Product</option>
+                                            <option :value="null">Select Product</option>
                                             <option v-for="product in targetProducts" :key="product.id"
                                                 :value="product.id">
                                                 {{ product.name }}
@@ -309,7 +322,7 @@ loadData()
                                         <div class="text-xs text-gray-400 mb-1">To</div>
                                         <select v-model="formData.target_product_id"
                                             class="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-800">
-                                            <option value="">Select Product</option>
+                                            <option :value="null">Select Product</option>
                                             <option v-for="product in targetProducts" :key="product.id"
                                                 :value="product.id">
                                                 {{ product.name }}
@@ -323,7 +336,7 @@ loadData()
                                     <div class="text-xs text-gray-400 mb-1">Assigned Worker</div>
                                     <select v-model="formData.repair_worker_id"
                                         class="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-800">
-                                        <option value="">Select Worker</option>
+                                        <option :value="null">Select Worker</option>
                                         <option v-for="worker in repairWorkers" :key="worker.id" :value="worker.id">
                                             {{ worker.name }}
                                         </option>
@@ -362,10 +375,22 @@ loadData()
                                 </h3>
 
                                 <div>
+                                    <div class="text-xs text-gray-400 mb-1">Product to Repair</div>
+                                    <select v-model="formData.source_product_id"
+                                        class="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800">
+                                        <option :value="null">Select Product</option>
+                                        <option v-for="product in targetProducts" :key="product.id"
+                                            :value="product.id">
+                                            {{ product.name }}
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div>
                                     <div class="text-xs text-gray-400 mb-1">Repair Worker</div>
                                     <select v-model="formData.repair_worker_id"
                                         class="w-full bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800">
-                                        <option value="">Select Worker</option>
+                                        <option :value="null">Select Worker</option>
                                         <option v-for="worker in repairWorkers" :key="worker.id" :value="worker.id">
                                             {{ worker.name }}
                                         </option>

@@ -1122,14 +1122,25 @@ async function fetchData() {
       })
     }
 
-    // Fetch current period deliveries
+    // Fetch current period deliveries - filter by date to avoid 1000 row limit
+    const deliveryStart = level.value === 'monthly'
+      ? `${selectedDate.value.getFullYear()}-${String(selectedDate.value.getMonth() + 1).padStart(2, '0')}-01`
+      : start
+    const deliveryEnd = level.value === 'monthly'
+      ? `${selectedDate.value.getFullYear()}-${String(selectedDate.value.getMonth() + 1).padStart(2, '0')}-${new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth() + 1, 0).getDate()}`
+      : end
+
     const { data: inHouseData, error: inHouseError } = await supabase
       .from('deliveries')
       .select('*, products(*), workers(*)')
+      .gte('delivery_date', deliveryStart)
+      .lte('delivery_date', deliveryEnd)
 
     const { data: subconData, error: subconError } = await supabase
       .from('subcon_deliveries')
       .select('*, products(*), subcontractors(*)')
+      .gte('delivery_date', deliveryStart)
+      .lte('delivery_date', deliveryEnd)
 
     if (!inHouseError) deliveries.value = inHouseData || []
     if (!subconError) subconDeliveries.value = subconData || []
@@ -1672,9 +1683,11 @@ function totalColumn(key) {
 // Fetch all-time transactions for cumulative closing balance (like CashTracker)
 async function fetchAllTimeBalance() {
   try {
+    // Use range to fetch more than default 1000 limit, only select needed fields
     const { data: allTransactions, error } = await supabase
       .from('transactions')
-      .select('*')
+      .select('amount, type')
+      .range(0, 4999)
 
     if (error) {
       console.error('All-time balance fetch error:', error)

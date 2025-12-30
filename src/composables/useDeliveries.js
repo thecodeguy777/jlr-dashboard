@@ -7,6 +7,11 @@ export function useDeliveries() {
   let channel = null
 
   const fetchDeliveries = async () => {
+    // Filter to last 3 months to avoid 1000 row limit
+    const threeMonthsAgo = new Date()
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+    const startDate = threeMonthsAgo.toISOString().split('T')[0]
+
     const { data, error } = await supabase
       .from('deliveries')
       .select(`
@@ -18,6 +23,7 @@ export function useDeliveries() {
         workers (id, name),
         products (id, name, category, unit, price_per_unit)
       `)
+      .gte('delivery_date', startDate)
       .order('delivery_date', { ascending: false })
 
     if (!error) deliveries.value = data

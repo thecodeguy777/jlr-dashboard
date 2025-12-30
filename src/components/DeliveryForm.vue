@@ -101,7 +101,8 @@ function handleSubmit() {
     product_id: props.formData.product_id,
     quantity: props.formData.quantity,
     price_snapshot,
-    notes: props.formData.notes || ''
+    notes: props.formData.notes || '',
+    is_repaired: props.formData.is_repaired || false
   }
 
   if (props.formData.source === 'inhouse') {

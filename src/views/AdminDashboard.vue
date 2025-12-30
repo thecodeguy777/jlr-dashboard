@@ -384,10 +384,71 @@
         </div>
 
         <!-- Payout Breakdown Table -->
+        <!-- Split Table Controls -->
+        <div class="bg-white/5 rounded-xl p-4 mb-4">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <h3 class="text-lg font-semibold text-white">💵 Payout Breakdown</h3>
+
+            <!-- Split Toggle -->
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" v-model="splitTableEnabled"
+                  class="w-4 h-4 rounded border-white/30 bg-white/10 text-blue-500 focus:ring-blue-500 focus:ring-offset-0">
+                <span class="text-sm text-white/80">Split Table</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Split Configuration (when enabled) -->
+          <div v-if="splitTableEnabled" class="mt-4 pt-4 border-t border-white/10">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Group A -->
+              <div class="bg-blue-500/10 rounded-lg p-3 border border-blue-500/20">
+                <div class="flex items-center justify-between mb-2">
+                  <input v-model="groupAName" type="text" placeholder="Group A Name"
+                    class="bg-transparent text-blue-300 font-medium text-sm border-none focus:outline-none focus:ring-0 w-full">
+                  <span class="text-xs text-blue-400 whitespace-nowrap ml-2">{{ groupAEmployees.length }} selected</span>
+                </div>
+                <div class="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                  <label v-for="emp in availableEmployees" :key="'a-' + emp.id"
+                    class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
+                    :class="groupAEmployees.includes(emp.id) ? 'bg-blue-500/30 text-blue-200' : 'bg-white/5 text-white/60 hover:bg-white/10'">
+                    <input type="checkbox"
+                      :checked="groupAEmployees.includes(emp.id)"
+                      @change="toggleGroupA(emp.id)"
+                      class="sr-only">
+                    {{ emp.name }}
+                  </label>
+                </div>
+              </div>
+
+              <!-- Group B -->
+              <div class="bg-purple-500/10 rounded-lg p-3 border border-purple-500/20">
+                <div class="flex items-center justify-between mb-2">
+                  <input v-model="groupBName" type="text" placeholder="Group B Name"
+                    class="bg-transparent text-purple-300 font-medium text-sm border-none focus:outline-none focus:ring-0 w-full">
+                  <span class="text-xs text-purple-400 whitespace-nowrap ml-2">{{ groupBEmployees.length }} selected</span>
+                </div>
+                <div class="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                  <label v-for="emp in availableEmployees" :key="'b-' + emp.id"
+                    class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
+                    :class="groupBEmployees.includes(emp.id) ? 'bg-purple-500/30 text-purple-200' : 'bg-white/5 text-white/60 hover:bg-white/10'">
+                    <input type="checkbox"
+                      :checked="groupBEmployees.includes(emp.id)"
+                      @change="toggleGroupB(emp.id)"
+                      class="sr-only">
+                    {{ emp.name }}
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Mobile View (shown when screen is small) -->
         <!-- Mobile Payout Cards -->
         <div class="space-y-4 md:hidden">
-          <router-link v-for="person in payoutBreakdown" :key="person.id"
+          <router-link v-for="person in filteredPayoutBreakdown" :key="person.id"
             :to="`/payout/${person.id}?week=${selectedSaturday}`"
             class="block bg-white/5 p-4 rounded-xl shadow-lg ring-1 ring-white/10 transition hover:ring-green-500 hover:shadow-green-500/10">
             <div class="flex justify-between items-center mb-3">
@@ -427,8 +488,8 @@
 
 
 
-        <!-- Desktop Table (only visible on md and up) -->
-        <div class="hidden md:block overflow-x-auto">
+        <!-- Desktop Table (only visible on md and up) - Single Table (default) -->
+        <div v-if="!splitTableEnabled" class="hidden md:block overflow-x-auto">
           <table class="min-w-full text-sm text-white/80 table-auto">
             <thead class="border-b border-white/10">
               <tr>
@@ -445,7 +506,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="person in payoutBreakdown" :key="person.name"
+              <tr v-for="person in filteredPayoutBreakdown" :key="person.name"
                 @click="$router.push(`/payout/${person.id}?week=${selectedSaturday}`)"
                 class="border-b border-white/5 hover:bg-white/5 cursor-pointer transition-colors">
                 <td class="py-2 pr-4 font-medium">{{ person.name }}</td>
@@ -462,7 +523,7 @@
             </tbody>
             <tfoot class="border-t border-white/10 text-white/80">
               <tr>
-                <th class="text-left py-2 pr-4">Total</th>
+                <th class="text-left py-2 pr-4">Total ({{ filteredPayoutBreakdown.length }} employees)</th>
                 <th class="text-left py-2 pr-4">₱{{ totalColumn('gross') }}</th>
                 <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumn('cashAdvance') }}</th>
                 <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumn('savings') }}</th>
@@ -474,10 +535,126 @@
                 <th class="text-left py-2 text-white/80">₱{{ totalColumn('total') }}</th>
               </tr>
             </tfoot>
-
-
           </table>
         </div>
+
+        <!-- Split Tables (when enabled) -->
+        <div v-if="splitTableEnabled" class="hidden md:block space-y-8">
+          <!-- Group A Table -->
+          <div v-if="groupAEmployees.length > 0" class="bg-blue-500/5 rounded-xl p-4 border border-blue-500/20">
+            <h4 class="text-lg font-semibold text-blue-300 mb-4">{{ groupAName || 'Group A' }}</h4>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm text-white/80 table-auto">
+                <thead class="border-b border-blue-500/20">
+                  <tr>
+                    <th class="text-left py-2 pr-4">Name</th>
+                    <th class="text-left py-2 pr-4">Gross</th>
+                    <th class="text-left py-2 pr-4">Cash Advance</th>
+                    <th class="text-left py-2 pr-4">Savings</th>
+                    <th class="text-left py-2 pr-4">Contributions</th>
+                    <th class="text-left py-2 pr-4">Deductibles (Loan)</th>
+                    <th class="text-left py-2 pr-4">Commission</th>
+                    <th class="text-left py-2 pr-4">Allowance</th>
+                    <th class="text-left py-2 pr-4">Refund</th>
+                    <th class="text-left py-2">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="person in groupAPayoutBreakdown" :key="'a-' + person.name"
+                    @click="$router.push(`/payout/${person.id}?week=${selectedSaturday}`)"
+                    class="border-b border-blue-500/10 hover:bg-blue-500/10 cursor-pointer transition-colors">
+                    <td class="py-2 pr-4 font-medium">{{ person.name }}</td>
+                    <td class="py-2 pr-4">{{ person.gross || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.cashAdvance || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.savings || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.contributions || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.deductibles || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.commission || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.allowance || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.refund || '' }}</td>
+                    <td class="py-2">{{ person.total || '' }}</td>
+                  </tr>
+                </tbody>
+                <tfoot class="border-t border-blue-500/20 text-white/80">
+                  <tr>
+                    <th class="text-left py-2 pr-4">Total ({{ groupAPayoutBreakdown.length }})</th>
+                    <th class="text-left py-2 pr-4">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'gross') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'cashAdvance') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'savings') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'contributions') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'deductibles') }}</th>
+                    <th class="text-left py-2 pr-4 text-green-400">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'commission') }}</th>
+                    <th class="text-left py-2 pr-4 text-green-400">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'allowance') }}</th>
+                    <th class="text-left py-2 pr-4 text-green-400">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'refund') }}</th>
+                    <th class="text-left py-2 text-blue-300 font-bold">₱{{ totalColumnForGroup(groupAPayoutBreakdown, 'total') }}</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Group B Table -->
+          <div v-if="groupBEmployees.length > 0" class="bg-purple-500/5 rounded-xl p-4 border border-purple-500/20">
+            <h4 class="text-lg font-semibold text-purple-300 mb-4">{{ groupBName || 'Group B' }}</h4>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm text-white/80 table-auto">
+                <thead class="border-b border-purple-500/20">
+                  <tr>
+                    <th class="text-left py-2 pr-4">Name</th>
+                    <th class="text-left py-2 pr-4">Gross</th>
+                    <th class="text-left py-2 pr-4">Cash Advance</th>
+                    <th class="text-left py-2 pr-4">Savings</th>
+                    <th class="text-left py-2 pr-4">Contributions</th>
+                    <th class="text-left py-2 pr-4">Deductibles (Loan)</th>
+                    <th class="text-left py-2 pr-4">Commission</th>
+                    <th class="text-left py-2 pr-4">Allowance</th>
+                    <th class="text-left py-2 pr-4">Refund</th>
+                    <th class="text-left py-2">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="person in groupBPayoutBreakdown" :key="'b-' + person.name"
+                    @click="$router.push(`/payout/${person.id}?week=${selectedSaturday}`)"
+                    class="border-b border-purple-500/10 hover:bg-purple-500/10 cursor-pointer transition-colors">
+                    <td class="py-2 pr-4 font-medium">{{ person.name }}</td>
+                    <td class="py-2 pr-4">{{ person.gross || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.cashAdvance || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.savings || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.contributions || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.deductibles || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.commission || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.allowance || '' }}</td>
+                    <td class="py-2 pr-4">{{ person.refund || '' }}</td>
+                    <td class="py-2">{{ person.total || '' }}</td>
+                  </tr>
+                </tbody>
+                <tfoot class="border-t border-purple-500/20 text-white/80">
+                  <tr>
+                    <th class="text-left py-2 pr-4">Total ({{ groupBPayoutBreakdown.length }})</th>
+                    <th class="text-left py-2 pr-4">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'gross') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'cashAdvance') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'savings') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'contributions') }}</th>
+                    <th class="text-left py-2 pr-4 text-red-400">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'deductibles') }}</th>
+                    <th class="text-left py-2 pr-4 text-green-400">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'commission') }}</th>
+                    <th class="text-left py-2 pr-4 text-green-400">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'allowance') }}</th>
+                    <th class="text-left py-2 pr-4 text-green-400">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'refund') }}</th>
+                    <th class="text-left py-2 text-purple-300 font-bold">₱{{ totalColumnForGroup(groupBPayoutBreakdown, 'total') }}</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Empty State when split enabled but no employees selected -->
+          <div v-if="groupAEmployees.length === 0 && groupBEmployees.length === 0"
+            class="text-center py-8 text-white/60">
+            <p>Click on employee names above to add them to each group</p>
+          </div>
+        </div>
+
+        <!-- Bottom padding for nav -->
+        <div class="h-24"></div>
 
       </div>
     </template>
@@ -501,6 +678,13 @@ const totalSalaries = ref(0)
 const deliveriesByCategory = ref({ singleWall: 0, doubleWall: 0 })
 const deliveriesPercentChange = ref(0)
 const payoutBreakdown = ref([])
+const selectedEmployees = ref([]) // For filtering payout table by employee
+const showEmployeeFilter = ref(false) // Toggle filter dropdown
+const splitTableEnabled = ref(false) // Toggle split table mode
+const groupAEmployees = ref([]) // Employees in Group A
+const groupBEmployees = ref([]) // Employees in Group B
+const groupAName = ref('Bodega 1') // Customizable group name
+const groupBName = ref('Bodega 2') // Customizable group name
 const grossSalesTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const grossCostTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
 const profitTotal = ref({ all: 0, inhouse: 0, subcon: 0 })
@@ -589,6 +773,84 @@ const scrapPercentChange = ref(0)
 // Expense card expansion
 const expandedCategories = ref(new Set())
 
+// Filtered payout breakdown based on selected employees
+const filteredPayoutBreakdown = computed(() => {
+  if (selectedEmployees.value.length === 0) {
+    return payoutBreakdown.value
+  }
+  return payoutBreakdown.value.filter(p => selectedEmployees.value.includes(p.id))
+})
+
+// Get all employee names for the filter dropdown
+const availableEmployees = computed(() => {
+  return payoutBreakdown.value.map(p => ({ id: p.id, name: p.name }))
+})
+
+// Toggle employee selection
+function toggleEmployeeSelection(employeeId) {
+  const index = selectedEmployees.value.indexOf(employeeId)
+  if (index === -1) {
+    selectedEmployees.value.push(employeeId)
+  } else {
+    selectedEmployees.value.splice(index, 1)
+  }
+}
+
+// Select all employees
+function selectAllEmployees() {
+  selectedEmployees.value = payoutBreakdown.value.map(p => p.id)
+}
+
+// Clear employee selection
+function clearEmployeeSelection() {
+  selectedEmployees.value = []
+}
+
+// Toggle employee in Group A
+function toggleGroupA(employeeId) {
+  const index = groupAEmployees.value.indexOf(employeeId)
+  if (index === -1) {
+    groupAEmployees.value.push(employeeId)
+    // Remove from Group B if present
+    const bIndex = groupBEmployees.value.indexOf(employeeId)
+    if (bIndex !== -1) groupBEmployees.value.splice(bIndex, 1)
+  } else {
+    groupAEmployees.value.splice(index, 1)
+  }
+}
+
+// Toggle employee in Group B
+function toggleGroupB(employeeId) {
+  const index = groupBEmployees.value.indexOf(employeeId)
+  if (index === -1) {
+    groupBEmployees.value.push(employeeId)
+    // Remove from Group A if present
+    const aIndex = groupAEmployees.value.indexOf(employeeId)
+    if (aIndex !== -1) groupAEmployees.value.splice(aIndex, 1)
+  } else {
+    groupBEmployees.value.splice(index, 1)
+  }
+}
+
+// Computed: Group A payout breakdown
+const groupAPayoutBreakdown = computed(() => {
+  return payoutBreakdown.value.filter(p => groupAEmployees.value.includes(p.id))
+})
+
+// Computed: Group B payout breakdown
+const groupBPayoutBreakdown = computed(() => {
+  return payoutBreakdown.value.filter(p => groupBEmployees.value.includes(p.id))
+})
+
+// Helper function to calculate totals for a specific group
+function totalColumnForGroup(group, key) {
+  const sum = group.reduce((total, p) => {
+    const num = parseFloat(p[key])
+    return total + (isNaN(num) ? 0 : num)
+  }, 0)
+  return sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function snapToSaturday() {
   const selected = new Date(selectedSaturday.value)
   const offset = (6 - selected.getDay() + 7) % 7
@@ -670,7 +932,7 @@ function formatDate(date) {
 }
 
 function totalColumn(key) {
-  const sum = payoutBreakdown.value.reduce((total, p) => {
+  const sum = filteredPayoutBreakdown.value.reduce((total, p) => {
     const num = parseFloat(p[key])
     return total + (isNaN(num) ? 0 : num)
   }, 0)
@@ -844,7 +1106,12 @@ async function fetchKPIs() {
   // Fetch cash tracker data with last week for comparisons
   await fetchCashTrackerData(start, end, lastStart, lastEnd)
 
-  const { data: deliveries } = await supabase.from('deliveries').select('quantity, product_id, delivery_date')
+  // Filter deliveries to include both current and previous period to avoid 1000 row limit
+  const { data: deliveries } = await supabase
+    .from('deliveries')
+    .select('quantity, product_id, delivery_date')
+    .gte('delivery_date', lastStart)
+    .lte('delivery_date', end)
   const { data: products } = await supabase.from('products').select('id, category')
   const productMap = Object.fromEntries(products?.map(p => [p.id, p.category]) || [])
 

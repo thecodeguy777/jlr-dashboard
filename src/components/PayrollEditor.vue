@@ -523,7 +523,9 @@ const returnsSummary = computed(() => {
     }
 
     // Calculate earnings from repair/transform work
+    console.log('🔧 Repair worker data:', returnsData.value.as_repair_worker)
     returnsData.value.as_repair_worker.forEach(item => {
+        console.log('📊 Processing repair item:', item)
         summary.labor_earnings += Number(item.labor_cost || 0)
         if (item.type === 'repair') {
             summary.repaired_quantity += Number(item.quantity || 0)
@@ -537,20 +539,20 @@ const returnsSummary = computed(() => {
         summary.returned_quantity += Number(item.quantity || 0)
     })
 
+    console.log('💰 Labor earnings calculated:', summary.labor_earnings)
     return summary
 })
 
 // Add to payrollSummary computed
 const payrollSummary = computed(() => ({
-    grossIncome: grossPayCalculation.value.netMovement.value,  // Use stock movement as gross
+    grossIncome: grossPayCalculation.value.netMovement.value,  // Use stock movement as gross (includes labor)
     hourlyPay: totalHourlyPay.value,
     additions: totalAdditions.value,
     laborEarnings: returnsSummary.value.labor_earnings, // Add labor earnings
     deductions: totalDeductions.value,
-    netPay: grossPayCalculation.value.netMovement.value + // Gross from stock
+    netPay: grossPayCalculation.value.netMovement.value + // Gross from stock (already includes labor)
         totalHourlyPay.value +                        // Hours pay
-        totalAdditions.value +                        // Allowances & commissions
-        returnsSummary.value.labor_earnings -         // Labor earnings from returns
+        totalAdditions.value -                        // Allowances & commissions
         totalDeductions.value,                        // Deductions & savings
     totalHours: totalHours.value,
     savingsToDate: props.worker?.total_savings || 0,
@@ -701,9 +703,10 @@ const grossPayCalculation = computed(() => {
     const previousValue = deliverySummary.value.previous.totalValue
     const deliveriesValue = deliverySummary.value.delivered.totalValue
     const currentValue = deliverySummary.value.current.totalValue
+    const laborEarnings = returnsSummary.value.labor_earnings
 
-    // Net movement is: Current Stock + Deliveries - Previous Stock
-    const netMovement = currentValue + deliveriesValue - previousValue
+    // Net movement is: Current Stock + Deliveries - Previous Stock + Repair Labor
+    const netMovement = currentValue + deliveriesValue - previousValue + laborEarnings
 
     return {
         previousStock: {
@@ -713,6 +716,10 @@ const grossPayCalculation = computed(() => {
         deliveries: {
             value: deliveriesValue,
             pcs: deliverySummary.value.delivered.total
+        },
+        repairLabor: {
+            value: laborEarnings,
+            pcs: returnsSummary.value.repaired_quantity + returnsSummary.value.transformed_quantity
         },
         currentStock: {
             value: currentValue,
@@ -1057,6 +1064,7 @@ async function fetchReturnsData() {
         const weekEnd = weekEndDate.toISOString().split('T')[0] // Format as YYYY-MM-DD
 
         console.log('Week range for returns:', { weekStart, weekEnd })
+        console.log('🔍 Looking for repairs by worker ID:', props.worker.id)
 
         // Get returns where worker is the repair worker (earning labor costs)
         const { data: asRepairWorker, error: repairError } = await supabase
@@ -1069,12 +1077,16 @@ async function fetchReturnsData() {
                 quantity,
                 type,
                 labor_cost,
+                repair_worker_id,
                 product:product_id (name),
                 worker:worker_id (name)
             `)
             .eq('repair_worker_id', props.worker.id)
             .gte('created_at', weekStart)
             .lte('created_at', weekEnd)
+
+        console.log('📦 Raw repair data from DB:', asRepairWorker)
+        console.log('❌ Query error:', repairError)
 
         if (repairError) {
             console.error('Error fetching repair worker returns:', repairError)
@@ -1224,6 +1236,10 @@ async function fetchReturnsData() {
                                             <span class="text-gray-400">Deliveries</span>
                                             <span class="text-green-400 font-medium">{{ formatCurrency(grossPayCalculation.deliveries.value) }}</span>
                                         </div>
+                                        <div v-if="grossPayCalculation.repairLabor.value > 0" class="flex justify-between items-center">
+                                            <span class="text-gray-400">Repair Labor</span>
+                                            <span class="text-purple-400 font-medium">{{ formatCurrency(grossPayCalculation.repairLabor.value) }}</span>
+                                        </div>
                                         <div class="flex justify-between items-center">
                                             <span class="text-gray-400">Current</span>
                                             <span class="text-blue-400 font-medium">{{ formatCurrency(grossPayCalculation.currentStock.value) }}</span>
@@ -1325,9 +1341,16 @@ async function fetchReturnsData() {
                                 </label>
                                 <div class="relative">
                                     <input type="number" v-model.number="payrollData.gross_income"
-                                        class="w-full bg-gray-700/50 border border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-200" 
+                                        class="w-full bg-gray-700/50 border border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-200"
                                         placeholder="Enter gross income amount"/>
                                     <div class="absolute right-3 top-3 text-gray-400 text-sm">₱</div>
+                                </div>
+                                <div v-if="grossPayCalculation.repairLabor.value > 0" class="mt-3 pt-3 border-t border-gray-700/50">
+                                    <div class="flex justify-between items-center text-sm">
+                                        <span class="text-gray-400">Includes Repair Labor:</span>
+                                        <span class="text-purple-400 font-medium">₱{{ formatNumber(grossPayCalculation.repairLabor.value) }}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 mt-1">{{ grossPayCalculation.repairLabor.pcs }} pcs repaired/transformed</div>
                                 </div>
                             </div>
 

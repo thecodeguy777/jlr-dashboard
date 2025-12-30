@@ -599,17 +599,23 @@
         <!-- PANDI Delivery Dates -->
         <div
           class="bg-gradient-to-br from-green-900/20 to-emerald-900/20 backdrop-blur-sm rounded-2xl p-6 border border-green-500/30">
-          <div class="flex items-center gap-3 mb-4">
-            <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-              <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4">
-                </path>
-              </svg>
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4">
+                  </path>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-lg font-bold text-white">PANDI Delivery Dates</h3>
+                <p class="text-green-300 text-sm">In-house production records</p>
+              </div>
             </div>
-            <div>
-              <h3 class="text-lg font-bold text-white">PANDI Delivery Dates</h3>
-              <p class="text-green-300 text-sm">In-house production records</p>
+            <div class="text-right">
+              <p class="text-white font-bold">₱{{ Math.round(pandiTotalRevenue).toLocaleString() }}</p>
+              <p class="text-green-400/70 text-xs">total revenue</p>
             </div>
           </div>
 
@@ -642,17 +648,23 @@
         <!-- SUBCON Delivery Dates -->
         <div
           class="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 backdrop-blur-sm rounded-2xl p-6 border border-purple-500/30">
-          <div class="flex items-center gap-3 mb-4">
-            <div class="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
-              <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
-                </path>
-              </svg>
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                  </path>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-lg font-bold text-white">SUBCON Delivery Dates</h3>
+                <p class="text-purple-300 text-sm">Subcontractor production records</p>
+              </div>
             </div>
-            <div>
-              <h3 class="text-lg font-bold text-white">SUBCON Delivery Dates</h3>
-              <p class="text-purple-300 text-sm">Subcontractor production records</p>
+            <div class="text-right">
+              <p class="text-white font-bold">₱{{ Math.round(subconTotalRevenue).toLocaleString() }}</p>
+              <p class="text-purple-400/70 text-xs">total revenue</p>
             </div>
           </div>
 
@@ -773,7 +785,7 @@
               <span class="text-teal-300 text-sm font-medium">Single Walled</span>
             </div>
             <p class="text-white text-2xl font-bold">{{ bodegaSingleWallTotal.toLocaleString() }} pcs</p>
-            <p class="text-teal-400 text-sm">₱{{ Math.round(bodegaSingleWallValue).toLocaleString() }} value</p>
+            <p class="text-teal-400 text-sm">₱{{ Math.round(bodegaSingleWallSellingValue).toLocaleString() }} <span class="text-teal-400/60">when sold</span></p>
           </div>
 
           <div class="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -781,7 +793,7 @@
               <span class="text-cyan-300 text-sm font-medium">Double Walled</span>
             </div>
             <p class="text-white text-2xl font-bold">{{ bodegaDoubleWallTotal.toLocaleString() }} pcs</p>
-            <p class="text-cyan-400 text-sm">₱{{ Math.round(bodegaDoubleWallValue).toLocaleString() }} value</p>
+            <p class="text-cyan-400 text-sm">₱{{ Math.round(bodegaDoubleWallSellingValue).toLocaleString() }} <span class="text-cyan-400/60">when sold</span></p>
           </div>
 
           <div class="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -790,7 +802,7 @@
             </div>
             <p class="text-white text-2xl font-bold">{{ (bodegaSingleWallTotal + bodegaDoubleWallTotal).toLocaleString()
             }} pcs</p>
-            <p class="text-white/70 text-sm">₱{{ Math.round(bodegaTotalValue).toLocaleString() }} total value</p>
+            <p class="text-white/70 text-sm">₱{{ Math.round(bodegaTotalSellingValue).toLocaleString() }} <span class="text-white/50">when sold</span></p>
           </div>
         </div>
 
@@ -1213,14 +1225,26 @@ async function fetchData() {
       })
     }
 
-    // Fetch current period deliveries
+    // Fetch current period deliveries - filter by date to avoid 1000 row limit
+    // For monthly view, fetch full month; for weekly/daily, the range is narrower
+    const deliveryStart = level.value === 'monthly'
+      ? `${selectedDate.value.getFullYear()}-${String(selectedDate.value.getMonth() + 1).padStart(2, '0')}-01`
+      : start
+    const deliveryEnd = level.value === 'monthly'
+      ? `${selectedDate.value.getFullYear()}-${String(selectedDate.value.getMonth() + 1).padStart(2, '0')}-${new Date(selectedDate.value.getFullYear(), selectedDate.value.getMonth() + 1, 0).getDate()}`
+      : end
+
     const { data: inHouseData, error: inHouseError } = await supabase
       .from('deliveries')
       .select('*, products(*), workers(*)')
+      .gte('delivery_date', deliveryStart)
+      .lte('delivery_date', deliveryEnd)
 
     const { data: subconData, error: subconError } = await supabase
       .from('subcon_deliveries')
       .select('*, products(*), subcontractors(*)')
+      .gte('delivery_date', deliveryStart)
+      .lte('delivery_date', deliveryEnd)
 
     if (!inHouseError) deliveries.value = inHouseData || []
     if (!subconError) subconDeliveries.value = subconData || []
@@ -2125,6 +2149,16 @@ const subconDeliveryRecords = computed(() => {
   return Object.values(records).sort((a, b) => new Date(b.date) - new Date(a.date))
 })
 
+// Total revenue from PANDI deliveries
+const pandiTotalRevenue = computed(() => {
+  return pandiDeliveryRecords.value.reduce((sum, record) => sum + record.revenue, 0)
+})
+
+// Total revenue from SUBCON deliveries
+const subconTotalRevenue = computed(() => {
+  return subconDeliveryRecords.value.reduce((sum, record) => sum + record.revenue, 0)
+})
+
 // Subcontractor breakdown with individual performance
 const subcontractorBreakdown = computed(() => {
   const breakdown = {}
@@ -2280,6 +2314,31 @@ const bodegaDoubleWallValue = computed(() => {
 
 const bodegaTotalValue = computed(() => {
   return bodegaSingleWallValue.value + bodegaDoubleWallValue.value
+})
+
+// Selling value for bodega stock (using client prices - what we get when sold)
+const bodegaSingleWallSellingValue = computed(() => {
+  return bodegaStock.value
+    .filter(entry => entry.products?.category === 'Single Walled')
+    .reduce((sum, entry) => {
+      const qty = entry.quantity || 0
+      const price = clientPriceMap.value[entry.product_id] || 0
+      return sum + (qty * price)
+    }, 0)
+})
+
+const bodegaDoubleWallSellingValue = computed(() => {
+  return bodegaStock.value
+    .filter(entry => entry.products?.category === 'Double Walled')
+    .reduce((sum, entry) => {
+      const qty = entry.quantity || 0
+      const price = clientPriceMap.value[entry.product_id] || 0
+      return sum + (qty * price)
+    }, 0)
+})
+
+const bodegaTotalSellingValue = computed(() => {
+  return bodegaSingleWallSellingValue.value + bodegaDoubleWallSellingValue.value
 })
 
 const bodegaActiveWorkers = computed(() => {

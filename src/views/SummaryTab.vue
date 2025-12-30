@@ -58,11 +58,19 @@ const formattedDateRange = computed(() => {
     return `📅 Daily Report – ${formatDate(deliveryDate.value)}`
 })
 
-onMounted(async () => {
+async function fetchDeliveries() {
     isLoading.value = true
+
+    // Filter by current month to avoid 1000 row limit
+    const year = selectedDate.value.getFullYear()
+    const month = String(selectedDate.value.getMonth() + 1).padStart(2, '0')
+    const deliveryStart = `${year}-${month}-01`
+    const deliveryEnd = `${year}-${month}-${new Date(year, selectedDate.value.getMonth() + 1, 0).getDate()}`
 
     const { data: d1 } = await supabase.from('deliveries')
         .select('quantity, delivery_date, products(id, name, price_per_unit, category)')
+        .gte('delivery_date', deliveryStart)
+        .lte('delivery_date', deliveryEnd)
 
     const { data: d2, error } = await supabase.from('subcon_deliveries')
         .select(`
@@ -70,6 +78,8 @@ onMounted(async () => {
             subcon_id, products(id, name, category, subcon_price),
             subcontractors(id, name)
         `)
+        .gte('delivery_date', deliveryStart)
+        .lte('delivery_date', deliveryEnd)
 
     if (error) {
         console.error('❌ Supabase join error:', error.message)
@@ -82,7 +92,12 @@ onMounted(async () => {
     })) || []
 
     isLoading.value = false
-})
+}
+
+onMounted(fetchDeliveries)
+
+// Refetch when date changes
+watch(deliveryDate, fetchDeliveries)
 
 function filterByDate(data) {
     return data.filter(d => {

@@ -747,7 +747,10 @@ async function loadData() {
             // Calculate totals
             const totalDeductions = Object.values(existingPayout?.deductions || {}).reduce((a, b) => a + (b || 0), 0)
             const totalAllowances = Object.values(existingPayout?.allowances || {}).reduce((a, b) => a + (b || 0), 0)
-            const totalCommissions = Object.values(existingPayout?.commissions || {}).reduce((a, b) => a + (b || 0), 0)
+            // Don't include labor in commissions total - it's already in gross
+            const totalCommissions = Object.entries(existingPayout?.commissions || {})
+                .filter(([key]) => key !== 'labor')
+                .reduce((sum, [, val]) => sum + (val || 0), 0)
 
             const workerData = {
                 id: worker.id,
@@ -777,7 +780,7 @@ async function loadData() {
                 total_savings: totalSavings,
                 loan_balance: loanBalance,
                 total_deductions: totalDeductions + savings,
-                total_additions: totalAllowances + totalCommissions + (returnsSummary.totals.labor_earnings || 0),
+                total_additions: totalAllowances + totalCommissions,  // Labor is already in gross
                 net: existingPayout?.net_total || (
                     grossFromStock +
                     hoursPay +

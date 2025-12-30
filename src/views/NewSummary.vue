@@ -301,38 +301,51 @@ async function fetchTransactions() {
         const isAdmin = userStore.role === 'admin' || userStore.role === 'employee_admin'
         const userId = userStore.user?.id
 
-        // Base query with join
-        let query = supabase
-            .from('transactions')
-            .select(`
-    *,
-    user_profiles:user_id (
-      full_name,
-      role
-    )
-  `)
-            .order('date', { ascending: false })
+        // Paginate to handle >1000 rows
+        const PAGE_SIZE = 1000
+        let allData = []
+        let from = 0
+        let hasMore = true
 
-        // Restrict to current user if not admin or employee_admin
-        if (!isAdmin && userId) {
-            query = query.eq('user_id', userId)
-        }
+        while (hasMore) {
+            let query = supabase
+                .from('transactions')
+                .select(`
+                    *,
+                    user_profiles:user_id (
+                        full_name,
+                        role
+                    )
+                `)
+                .order('date', { ascending: false })
+                .range(from, from + PAGE_SIZE - 1)
 
-        const { data, error } = await query
+            // Restrict to current user if not admin or employee_admin
+            if (!isAdmin && userId) {
+                query = query.eq('user_id', userId)
+            }
 
-        if (error) {
-            console.error('[fetchTransactions] Supabase error:', error)
-            return
-        }
+            const { data, error } = await query
 
-        if (!data || !Array.isArray(data)) {
-            console.warn('[fetchTransactions] No valid data returned')
-            return
+            if (error) {
+                console.error('[fetchTransactions] Supabase error:', error)
+                return
+            }
+
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                hasMore = false
+            } else {
+                allData = allData.concat(data)
+                from += PAGE_SIZE
+                if (data.length < PAGE_SIZE) {
+                    hasMore = false
+                }
+            }
         }
 
         // Separate by type
-        expenses.value = data.filter(entry => entry.type === 'expense')
-        topups.value = data.filter(entry => entry.type === 'topup')
+        expenses.value = allData.filter(entry => entry.type === 'expense')
+        topups.value = allData.filter(entry => entry.type === 'topup')
 
         console.log('[fetchTransactions] Loaded:', {
             expenses: expenses.value.length,
